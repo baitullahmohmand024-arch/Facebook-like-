@@ -9,6 +9,8 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+storage.maxUploadRetryTime = 35_000;
+storage.maxOperationRetryTime = 20_000;
 export const googleProvider = new GoogleAuthProvider();
 
 export async function testFirestoreConnection(): Promise<boolean> {

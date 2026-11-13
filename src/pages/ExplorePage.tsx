@@ -352,12 +352,24 @@ export function ExplorePage({
                   <div className="relative bg-[#0A0A0C]">
                     {post.mediaType === 'video' ? (
                       <>
-                        <video
-                          src={post.mediaUrl}
-                          muted
-                          preload="metadata"
-                          className="w-full h-auto object-cover"
-                        />
+                        {post.thumbnailUrl ? (
+                          <img
+                            src={post.thumbnailUrl}
+                            alt={post.caption || 'Explore video moment'}
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-auto object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                          />
+                        ) : (
+                          <video
+                            src={post.mediaUrl}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="w-full h-auto object-cover"
+                          />
+                        )}
                         <div className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/70 text-[#D4AF37]">
                           <Film className="w-3.5 h-3.5" />
                         </div>
@@ -367,6 +379,7 @@ export function ExplorePage({
                         src={post.mediaUrl}
                         alt={post.caption || 'Explore post'}
                         loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                         className="w-full h-auto object-cover group-hover:scale-[1.02] transition-transform duration-300"
                       />

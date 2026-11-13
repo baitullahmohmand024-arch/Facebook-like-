@@ -259,10 +259,11 @@ export function PostCard({
           <div className={`relative ${aspectClass} w-full bg-black flex items-center justify-center`}>
             <video
               src={post.mediaUrl}
+              poster={post.thumbnailUrl || undefined}
               controls
               playsInline
               muted={muted}
-              preload="metadata"
+              preload={post.thumbnailUrl ? 'none' : 'metadata'}
               onError={() => setMediaError(true)}
               className="w-full h-full object-contain"
             />
@@ -281,6 +282,7 @@ export function PostCard({
               src={post.mediaUrl}
               alt={post.caption || `Post by ${post.authorName}`}
               loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               onError={() => setMediaError(true)}
               className="w-full h-full object-cover"

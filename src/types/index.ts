@@ -53,6 +53,7 @@ export interface Post {
   authorName: string;
   authorAvatarUrl: string;
   mediaUrl: string;
+  thumbnailUrl?: string;
   mediaType: MediaType;
   aspectRatio: AspectRatioType;
   caption: string;

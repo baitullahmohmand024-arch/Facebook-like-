@@ -21,6 +21,7 @@ import { AspectRatioType, CommentItem, MediaType, Post, UserProfile } from '../t
 export async function createPost(params: {
   author: UserProfile;
   mediaUrl: string;
+  thumbnailUrl?: string;
   mediaType: MediaType;
   aspectRatio: AspectRatioType;
   caption: string;
@@ -36,6 +37,7 @@ export async function createPost(params: {
     authorName: params.author.fullName,
     authorAvatarUrl: params.author.avatarUrl,
     mediaUrl: params.mediaUrl.slice(0, 2048),
+    ...(params.thumbnailUrl ? { thumbnailUrl: params.thumbnailUrl.slice(0, 2048) } : {}),
     mediaType: params.mediaType,
     aspectRatio: params.aspectRatio,
     caption: params.caption.trim().slice(0, 1000),

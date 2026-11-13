@@ -261,10 +261,12 @@ export function MomentsPage({
           ref={videoRef}
           key={currentVideo.id}
           src={currentVideo.mediaUrl}
+          poster={currentVideo.thumbnailUrl || undefined}
           playsInline
           loop
           autoPlay
           muted={muted}
+          preload="auto"
           onClick={togglePlay}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}

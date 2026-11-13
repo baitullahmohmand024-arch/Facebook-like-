@@ -85,6 +85,7 @@
         "authorName": { "type": "string", "minLength": 1, "maxLength": 64 },
         "authorAvatarUrl": { "type": "string", "maxLength": 1024 },
         "mediaUrl": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "thumbnailUrl": { "type": "string", "maxLength": 2048 },
         "mediaType": { "type": "string", "enum": ["image", "video"] },
         "aspectRatio": { "type": "string", "enum": ["square", "landscape", "portrait", "vertical"] },
         "caption": { "type": "string", "maxLength": 1000 },
