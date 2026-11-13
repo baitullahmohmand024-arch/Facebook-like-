@@ -1,0 +1,6 @@
+{
+  "name": "HOSTELVERSE",
+  "description": "Your Hostel. Your Stories. Your World. A 2030-era luxury social networking platform where hostel students connect, share moments, and preserve memories.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

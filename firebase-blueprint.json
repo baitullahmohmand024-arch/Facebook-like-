@@ -1,0 +1,402 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public hostel member profile without PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "username": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-zA-Z0-9_]+$" },
+        "usernameLower": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-z0-9_]+$" },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "bio": { "type": "string", "maxLength": 240 },
+        "hostel": { "type": "string", "maxLength": 80 },
+        "avatarUrl": { "type": "string", "maxLength": 1024 },
+        "coverUrl": { "type": "string", "maxLength": 1024 },
+        "followersCount": { "type": "integer" },
+        "followingCount": { "type": "integer" },
+        "postsCount": { "type": "integer" },
+        "isSuspended": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "username",
+        "usernameLower",
+        "fullName",
+        "bio",
+        "hostel",
+        "avatarUrl",
+        "coverUrl",
+        "followersCount",
+        "followingCount",
+        "postsCount",
+        "isSuspended",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateSettings": {
+      "title": "UserPrivateSettings",
+      "description": "Isolated private user settings, notification preferences, blocked list, and email PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 254 },
+        "privacyMode": { "type": "string", "enum": ["public", "followers"] },
+        "notifyLikes": { "type": "boolean" },
+        "notifyComments": { "type": "boolean" },
+        "notifyFollows": { "type": "boolean" },
+        "notifyMessages": { "type": "boolean" },
+        "blockedUserIds": { "type": "array", "maxLength": 100 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "email",
+        "privacyMode",
+        "notifyLikes",
+        "notifyComments",
+        "notifyFollows",
+        "notifyMessages",
+        "blockedUserIds",
+        "updatedAt"
+      ]
+    },
+    "UsernameReservation": {
+      "title": "UsernameReservation",
+      "description": "Unique lowercase username reservation mapping to uid.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "createdAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Member photo or video post in the HOSTELVERSE feed and Moments.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorUsername": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-zA-Z0-9_]+$" },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "authorAvatarUrl": { "type": "string", "maxLength": 1024 },
+        "mediaUrl": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "mediaType": { "type": "string", "enum": ["image", "video"] },
+        "aspectRatio": { "type": "string", "enum": ["square", "landscape", "portrait", "vertical"] },
+        "caption": { "type": "string", "maxLength": 1000 },
+        "hashtags": { "type": "array", "maxLength": 10 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "likesCount": { "type": "integer" },
+        "commentsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "authorId",
+        "authorUsername",
+        "authorName",
+        "authorAvatarUrl",
+        "mediaUrl",
+        "mediaType",
+        "aspectRatio",
+        "caption",
+        "hashtags",
+        "visibility",
+        "likesCount",
+        "commentsCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Comment on a post.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postAuthorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorUsername": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-zA-Z0-9_]+$" },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "authorAvatarUrl": { "type": "string", "maxLength": 1024 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "postId",
+        "postAuthorId",
+        "authorId",
+        "authorUsername",
+        "authorName",
+        "authorAvatarUrl",
+        "text",
+        "isPublic",
+        "createdAt"
+      ]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "Atomic like record keyed by postId_userId.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "userId", "createdAt"]
+    },
+    "Follow": {
+      "title": "Follow",
+      "description": "Follower relationship keyed by followerId_followingId.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "followerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "followingId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "followerId", "followingId", "createdAt"]
+    },
+    "SavedPost": {
+      "title": "SavedPost",
+      "description": "Bookmarked post keyed by userId_postId.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "postId", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User activity notification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recipientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorUsername": { "type": "string", "maxLength": 24 },
+        "actorName": { "type": "string", "maxLength": 64 },
+        "actorAvatarUrl": { "type": "string", "maxLength": 1024 },
+        "type": { "type": "string", "enum": ["like", "comment", "follow", "mention", "system"] },
+        "postId": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "recipientId",
+        "actorId",
+        "actorUsername",
+        "actorName",
+        "actorAvatarUrl",
+        "type",
+        "postId",
+        "message",
+        "isRead",
+        "createdAt"
+      ]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "One-to-one private messaging thread.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "participantIds": { "type": "array", "maxLength": 2 },
+        "participantAId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "participantBId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "participantAUsername": { "type": "string", "maxLength": 24 },
+        "participantAName": { "type": "string", "maxLength": 64 },
+        "participantAAvatar": { "type": "string", "maxLength": 1024 },
+        "participantBUsername": { "type": "string", "maxLength": 24 },
+        "participantBName": { "type": "string", "maxLength": 64 },
+        "participantBAvatar": { "type": "string", "maxLength": 1024 },
+        "lastMessageText": { "type": "string", "maxLength": 500 },
+        "lastMessageSenderId": { "type": "string", "maxLength": 128 },
+        "unreadByA": { "type": "integer" },
+        "unreadByB": { "type": "integer" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "participantIds",
+        "participantAId",
+        "participantBId",
+        "participantAUsername",
+        "participantAName",
+        "participantAAvatar",
+        "participantBUsername",
+        "participantBName",
+        "participantBAvatar",
+        "lastMessageText",
+        "lastMessageSenderId",
+        "unreadByA",
+        "unreadByB",
+        "lastMessageAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Private chat message inside a conversation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "conversationId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "participantIds": { "type": "array", "maxLength": 2 },
+        "senderId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recipientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "conversationId",
+        "participantIds",
+        "senderId",
+        "recipientId",
+        "text",
+        "isRead",
+        "createdAt"
+      ]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Moderation report filed by a member.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reporterId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetType": { "type": "string", "enum": ["post", "user", "comment"] },
+        "targetId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetAuthorId": { "type": "string", "maxLength": 128 },
+        "reason": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "details": { "type": "string", "maxLength": 600 },
+        "status": { "type": "string", "enum": ["open", "resolved", "dismissed"] },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "reporterId",
+        "targetType",
+        "targetId",
+        "targetAuthorId",
+        "reason",
+        "details",
+        "status",
+        "reviewedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PlatformSettings": {
+      "title": "PlatformSettings",
+      "description": "Global platform controls editable only by verified admins.",
+      "type": "object",
+      "properties": {
+        "maxUploadSizeMB": { "type": "integer" },
+        "allowNewRegistrations": { "type": "boolean" },
+        "maintenanceNotice": { "type": "string", "maxLength": 240 },
+        "featuredHashtags": { "type": "array", "maxLength": 10 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "maxUploadSizeMB",
+        "allowNewRegistrations",
+        "maintenanceNotice",
+        "featuredHashtags",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
+    "AdminMarker": {
+      "title": "AdminMarker",
+      "description": "Trusted administrator marker document.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "role": { "type": "string", "enum": ["admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public hostel member profile documents."
+    },
+    "/users/{userId}/private/settings": {
+      "schema": { "$ref": "#/entities/UserPrivateSettings" },
+      "description": "Private PII and user settings isolated from public profiles."
+    },
+    "/usernames/{usernameLower}": {
+      "schema": { "$ref": "#/entities/UsernameReservation" },
+      "description": "Unique lowercase username reservation index."
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Member photo and video posts."
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Comments linked to posts."
+    },
+    "/likes/{likeId}": {
+      "schema": { "$ref": "#/entities/Like" },
+      "description": "Atomic post like documents keyed by postId_userId."
+    },
+    "/follows/{followId}": {
+      "schema": { "$ref": "#/entities/Follow" },
+      "description": "Follow relationships keyed by followerId_followingId."
+    },
+    "/savedPosts/{saveId}": {
+      "schema": { "$ref": "#/entities/SavedPost" },
+      "description": "Private user bookmarks keyed by userId_postId."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User activity notifications."
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "One-to-one private message conversations."
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Messages inside a private conversation."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Community moderation reports."
+    },
+    "/platformSettings/config": {
+      "schema": { "$ref": "#/entities/PlatformSettings" },
+      "description": "Admin-managed platform settings."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminMarker" },
+      "description": "Trusted administrator records."
+    }
+  }
+}
