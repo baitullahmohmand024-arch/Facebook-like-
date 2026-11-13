@@ -38,6 +38,7 @@ import { PostCard } from '../components/PostCard';
 import { PostCardSkeleton } from '../components/Skeletons';
 import { ReportModal } from '../components/ReportModal';
 import { formatCount, sanitizeUsername } from '../utils/formatters';
+import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface ProfilePageProps {
   targetUserId: string;
@@ -172,7 +173,7 @@ export function ProfilePage({
       showToast({
         type: 'error',
         title: 'Upload failed',
-        description: err instanceof Error ? err.message : undefined,
+        description: formatUserFriendlyError(err),
       });
     } finally {
       setUploadingImage(false);
@@ -200,7 +201,7 @@ export function ProfilePage({
       showToast({
         type: 'error',
         title: 'Could not update profile',
-        description: err instanceof Error ? err.message : undefined,
+        description: formatUserFriendlyError(err),
       });
     } finally {
       setSavingProfile(false);

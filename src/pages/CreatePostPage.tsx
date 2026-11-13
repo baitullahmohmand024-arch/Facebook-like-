@@ -6,6 +6,7 @@ import { AspectRatioType, MediaType } from '../types';
 import { uploadMediaFile, validateMediaFile } from '../services/mediaService';
 import { createPost } from '../services/postService';
 import { parseHashtags } from '../utils/formatters';
+import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface CreatePostPageProps {
   onPublished: () => void;
@@ -104,7 +105,7 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
       });
       onPublished();
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Could not publish your post.');
+      setErrorMsg(formatUserFriendlyError(err, 'Could not publish your post.'));
       setUploadProgress(0);
     } finally {
       setPublishing(false);

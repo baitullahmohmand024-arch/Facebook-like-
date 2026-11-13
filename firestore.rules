@@ -306,8 +306,8 @@ service cloud.firestore {
 
     // Public Profiles (/users/{userId}) - zero PII stored here
     match /users/{userId} {
-      allow get: if isValidId(userId) && existing().uid == userId;
-      allow list: if resource.data.uid is string;
+      allow get: if isValidId(userId) && (isOwner(userId) || resource == null || existing().uid == userId);
+      allow list: if (request.query.limit is int && request.query.limit <= 100) || isAdmin();
 
       allow create: if isVerified()
                     && isValidId(userId)
@@ -417,8 +417,8 @@ service cloud.firestore {
 
     // Posts (/posts/{postId})
     match /posts/{postId} {
-      allow get: if isValidId(postId) && existing().visibility == 'public';
-      allow list: if resource.data.createdAt is timestamp && resource.data.authorId is string;
+      allow get: if isValidId(postId) && (resource == null || existing().visibility == 'public');
+      allow list: if (request.query.limit is int && request.query.limit <= 100) || isAdmin();
 
       allow create: if isNotSuspended()
                     && isValidId(postId)
@@ -481,8 +481,8 @@ service cloud.firestore {
 
     // Comments (/comments/{commentId})
     match /comments/{commentId} {
-      allow get: if isValidId(commentId) && existing().isPublic == true;
-      allow list: if resource.data.isPublic == true;
+      allow get: if isValidId(commentId) && (resource == null || existing().isPublic == true);
+      allow list: if (request.query.limit is int && request.query.limit <= 100) || isAdmin();
 
       allow create: if isNotSuspended()
                     && isValidId(commentId)
@@ -506,7 +506,7 @@ service cloud.firestore {
 
     // Likes (/likes/{likeId})
     match /likes/{likeId} {
-      allow get: if isSignedIn() && isValidId(likeId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(likeId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
 
       allow create: if isNotSuspended()
@@ -532,7 +532,7 @@ service cloud.firestore {
     match /follows/{followId} {
       allow get: if isSignedIn()
                  && isValidId(followId)
-                 && (existing().followerId == request.auth.uid || existing().followingId == request.auth.uid || isAdmin());
+                 && (resource == null || existing().followerId == request.auth.uid || existing().followingId == request.auth.uid || isAdmin());
       allow list: if isSignedIn()
                   && (resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid || isAdmin());
 
@@ -561,7 +561,7 @@ service cloud.firestore {
 
     // Saved Posts (/savedPosts/{saveId})
     match /savedPosts/{saveId} {
-      allow get: if isSignedIn() && isValidId(saveId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(saveId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
 
       allow create: if isNotSuspended()
@@ -578,7 +578,7 @@ service cloud.firestore {
 
     // Notifications (/notifications/{notificationId})
     match /notifications/{notificationId} {
-      allow get: if isSignedIn() && isValidId(notificationId) && existing().recipientId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(notificationId) && (resource == null || existing().recipientId == request.auth.uid);
       allow list: if isSignedIn() && resource.data.recipientId == request.auth.uid;
 
       allow create: if isNotSuspended()
@@ -608,7 +608,7 @@ service cloud.firestore {
     match /conversations/{conversationId} {
       allow get: if isSignedIn()
                  && isValidId(conversationId)
-                 && (existing().participantAId == request.auth.uid || existing().participantBId == request.auth.uid);
+                 && (resource == null || existing().participantAId == request.auth.uid || existing().participantBId == request.auth.uid);
       allow list: if isSignedIn() && (request.auth.uid in resource.data.participantIds);
 
       allow create: if isNotSuspended()
@@ -679,7 +679,7 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow get: if isSignedIn()
                  && isValidId(reportId)
-                 && (existing().reporterId == request.auth.uid || isAdmin());
+                 && (isAdmin() || (resource != null && existing().reporterId == request.auth.uid));
       allow list: if isSignedIn() && (resource.data.reporterId == request.auth.uid || isAdmin());
 
       allow create: if isNotSuspended()

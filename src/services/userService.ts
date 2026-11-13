@@ -9,6 +9,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -68,6 +69,39 @@ export async function checkIsAdmin(
   }
 }
 
+export async function ensureUserPrivateSettings(
+  uid: string,
+  email: string
+): Promise<UserPrivateSettings> {
+  const existing = await getUserPrivateSettings(uid);
+  if (existing) return existing;
+
+  const settingsRef = doc(db, 'users', uid, 'private', 'settings');
+  const payload = {
+    uid,
+    email: email.slice(0, 254),
+    privacyMode: 'public' as const,
+    notifyLikes: true,
+    notifyComments: true,
+    notifyFollows: true,
+    notifyMessages: true,
+    blockedUserIds: [] as string[],
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    await setDoc(settingsRef, payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `users/${uid}/private/settings`);
+  }
+
+  const created = await getUserPrivateSettings(uid);
+  if (!created) {
+    throw new Error('Could not initialize your private settings.');
+  }
+  return created;
+}
+
 export async function createUserProfileAndSettings(params: {
   uid: string;
   email: string;
@@ -76,6 +110,12 @@ export async function createUserProfileAndSettings(params: {
   hostel?: string;
   avatarUrl?: string;
 }): Promise<{ profile: UserProfile; settings: UserPrivateSettings }> {
+  const existingProfile = await getUserProfile(params.uid);
+  if (existingProfile) {
+    const settings = await ensureUserPrivateSettings(params.uid, params.email);
+    return { profile: existingProfile, settings };
+  }
+
   const cleanUsername = sanitizeUsername(params.username);
   const usernameLower = cleanUsername.toLowerCase();
   if (cleanUsername.length < 3) {

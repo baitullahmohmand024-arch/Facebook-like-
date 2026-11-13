@@ -15,6 +15,7 @@ import { auth, googleProvider, testFirestoreConnection } from '../lib/firebase';
 import {
   checkIsAdmin,
   createUserProfileAndSettings,
+  ensureUserPrivateSettings,
   getUserPrivateSettings,
   getUserProfile,
 } from '../services/userService';
@@ -108,11 +109,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadUserRecords = useCallback(async (user: User) => {
-    const [prof, priv, adminFlag] = await Promise.all([
+    const [prof, privInitial, adminFlag] = await Promise.all([
       getUserProfile(user.uid),
       getUserPrivateSettings(user.uid),
       checkIsAdmin(user.uid, user.email, user.emailVerified),
     ]);
+    let priv = privInitial;
+    if (prof && !priv && user.emailVerified) {
+      try {
+        priv = await ensureUserPrivateSettings(user.uid, user.email || '');
+      } catch {
+        priv = null;
+      }
+    }
     setProfile(prof);
     setPrivateSettings(priv);
     setIsAdmin(adminFlag);
@@ -192,6 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, googleProvider);
+    await result.user.getIdToken(true);
     await loadUserRecords(result.user);
   };
 

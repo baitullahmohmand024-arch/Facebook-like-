@@ -19,6 +19,7 @@ import { useToast } from '../context/ToastContext';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ReportModal } from './ReportModal';
+import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface PostCardProps {
   post: Post;
@@ -113,7 +114,7 @@ export function PostCard({
       showToast({
         type: 'error',
         title: 'Failed to post comment',
-        description: err instanceof Error ? err.message : undefined,
+        description: formatUserFriendlyError(err),
       });
     } finally {
       setSubmittingComment(false);

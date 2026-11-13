@@ -18,6 +18,7 @@ import {
 import { Avatar } from '../components/Avatar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { sanitizeUsername } from '../utils/formatters';
+import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface SettingsPageProps {
   onLoggedOut: () => void;
@@ -94,7 +95,7 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
       showToast({
         type: 'error',
         title: 'Could not update account',
-        description: err instanceof Error ? err.message : undefined,
+        description: formatUserFriendlyError(err),
       });
     } finally {
       setSavingAccount(false);
@@ -122,10 +123,10 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
       showToast({
         type: 'error',
         title: 'Could not update password',
-        description:
-          err instanceof Error
-            ? err.message
-            : 'Please verify your current password and try again.',
+        description: formatUserFriendlyError(
+          err,
+          'Please verify your current password and try again.'
+        ),
       });
     } finally {
       setChangingPassword(false);
@@ -185,10 +186,10 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
       showToast({
         type: 'error',
         title: 'Re-authentication required',
-        description:
-          err instanceof Error
-            ? err.message
-            : 'Please log out and sign back in right before deleting your account.',
+        description: formatUserFriendlyError(
+          err,
+          'Please log out and sign back in right before deleting your account.'
+        ),
       });
     } finally {
       setDeletingAccount(false);

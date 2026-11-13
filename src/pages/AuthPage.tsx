@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { checkUsernameAvailable } from '../services/userService';
 import { uploadMediaFile, validateMediaFile } from '../services/mediaService';
 import { sanitizeUsername } from '../utils/formatters';
+import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface AuthPageProps {
   initialMode?: 'login' | 'signup' | 'forgot';
@@ -59,14 +60,21 @@ export function AuthPage({
     }
   }, [profile, onAuthenticated]);
 
+  const prefilledUidRef = React.useRef<string | null>(null);
   useEffect(() => {
-    if (firebaseUser && !fullName && firebaseUser.displayName) {
-      setFullName(firebaseUser.displayName);
+    if (!firebaseUser) {
+      prefilledUidRef.current = null;
+      return;
     }
-    if (firebaseUser && !avatarUrl && firebaseUser.photoURL) {
-      setAvatarUrl(firebaseUser.photoURL);
+    if (prefilledUidRef.current === firebaseUser.uid) return;
+    prefilledUidRef.current = firebaseUser.uid;
+    if (firebaseUser.displayName) {
+      setFullName((prev) => prev || firebaseUser.displayName || '');
     }
-  }, [firebaseUser, fullName, avatarUrl]);
+    if (firebaseUser.photoURL) {
+      setAvatarUrl((prev) => prev || firebaseUser.photoURL || '');
+    }
+  }, [firebaseUser]);
 
   // Live username availability check
   useEffect(() => {
@@ -108,7 +116,7 @@ export function AuthPage({
     if (code === 'auth/popup-closed-by-user') {
       return 'Sign-in popup was closed before completion.';
     }
-    return err instanceof Error ? err.message : 'Authentication failed. Please try again.';
+    return formatUserFriendlyError(err, 'Authentication failed. Please try again.');
   };
 
   const handleGoogleSignIn = async () => {
@@ -233,7 +241,7 @@ export function AuthPage({
       showToast({ type: 'success', title: 'Profile created', description: 'Welcome to HOSTELVERSE.' });
       onAuthenticated();
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Unable to finish profile setup.');
+      setErrorMsg(formatUserFriendlyError(err, 'Unable to finish profile setup.'));
     } finally {
       setLoading(false);
     }
@@ -254,7 +262,7 @@ export function AuthPage({
       setAvatarUrl(url);
       showToast({ type: 'success', title: 'Profile picture uploaded' });
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Avatar upload failed.');
+      setErrorMsg(formatUserFriendlyError(err, 'Avatar upload failed.'));
     } finally {
       setAvatarUploading(false);
     }
@@ -301,7 +309,7 @@ export function AuthPage({
                     setErrorMsg('Email is not verified yet. Please click the link in your inbox.');
                   }
                 } catch (err) {
-                  setErrorMsg(err instanceof Error ? err.message : 'Could not verify status.');
+                  setErrorMsg(formatUserFriendlyError(err, 'Could not verify status.'));
                 } finally {
                   setLoading(false);
                 }

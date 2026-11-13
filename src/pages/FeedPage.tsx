@@ -16,6 +16,7 @@ import { fetchDiscoverMembers, getFollowingIds } from '../services/userService';
 import { PostCard } from '../components/PostCard';
 import { PostCardSkeleton } from '../components/Skeletons';
 import { Avatar } from '../components/Avatar';
+import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface FeedPageProps {
   onNavigateCreate: () => void;
@@ -79,7 +80,7 @@ export function FeedPage({
       showToast({
         type: 'error',
         title: 'Could not load feed',
-        description: err instanceof Error ? err.message : undefined,
+        description: formatUserFriendlyError(err),
       });
     } finally {
       setLoading(false);
@@ -184,7 +185,7 @@ export function FeedPage({
       showToast({
         type: 'error',
         title: 'Unable to delete post',
-        description: err instanceof Error ? err.message : undefined,
+        description: formatUserFriendlyError(err),
       });
     }
   };

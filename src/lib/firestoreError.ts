@@ -51,3 +51,34 @@ export function handleFirestoreError(
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+export function formatUserFriendlyError(
+  error: unknown,
+  fallback = 'Something went wrong. Please try again.'
+): string {
+  if (!(error instanceof Error)) return fallback;
+  const raw = error.message || '';
+
+  // Parse structured FirestoreErrorInfo JSON thrown by handleFirestoreError
+  if (raw.startsWith('{') && raw.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<FirestoreErrorInfo>;
+      const inner = parsed.error || '';
+      if (inner.toLowerCase().includes('permission') || inner.toLowerCase().includes('insufficient')) {
+        return 'Permission denied while saving or loading your data. Please ensure you are signed in with a verified account and try again.';
+      }
+      if (inner.toLowerCase().includes('offline') || inner.toLowerCase().includes('network')) {
+        return 'Unable to reach the database. Please check your internet connection.';
+      }
+      if (inner) return inner;
+    } catch {
+      // Fall through to standard message checks
+    }
+  }
+
+  if (raw.toLowerCase().includes('missing or insufficient permissions')) {
+    return 'You do not have permission to access this resource. Please refresh or sign in again.';
+  }
+
+  return raw || fallback;
+}

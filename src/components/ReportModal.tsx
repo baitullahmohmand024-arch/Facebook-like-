@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Flag, X } from 'lucide-react';
 import { createReport } from '../services/socialService';
 import { useToast } from '../context/ToastContext';
+import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface ReportModalProps {
   open: boolean;
@@ -61,7 +62,7 @@ export function ReportModal({
       showToast({
         type: 'error',
         title: 'Unable to submit report',
-        description: err instanceof Error ? err.message : 'Please try again.',
+        description: formatUserFriendlyError(err, 'Please try again.'),
       });
     } finally {
       setSubmitting(false);
