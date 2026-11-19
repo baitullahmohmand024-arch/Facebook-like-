@@ -1,4 +1,5 @@
 import { getDownloadURL, ref, uploadBytesResumable, UploadTask } from 'firebase/storage';
+import type { PutBlobResult } from '@vercel/blob';
 import { auth, storage } from '../lib/firebase';
 import { AspectRatioType, MediaType } from '../types';
 
@@ -50,6 +51,7 @@ export interface UploadResult {
   storagePath: string;
   bytesTransferred: number;
   elapsedMs: number;
+  blob?: PutBlobResult;
 }
 
 export interface PreparedMedia {
@@ -407,21 +409,26 @@ export async function prepareImageForUpload(
   const mimeType = inferMimeType(file) || 'image/jpeg';
   const fingerprint = buildFileFingerprint(file);
 
-  // Kick off bucket probe + WebP support check immediately in parallel with decoding
+  // Kick off cloud endpoint + bucket probes + WebP support check immediately in parallel with decoding
+  const vercelBlobPromise = checkVercelBlobAvailable();
   const bucketPromise = checkStorageBucketAvailable();
   const webpPromise = supportsWebPEncoding();
 
   // Preserve animated GIFs without re-encoding when within budget
   if (mimeType === 'image/gif') {
-    const bucketAvailable = await bucketPromise;
+    const [vercelBlobAvailable, bucketAvailable] = await Promise.all([
+      vercelBlobPromise,
+      bucketPromise,
+    ]);
+    const hasCloudTarget = vercelBlobAvailable || bucketAvailable;
     let directDataUrl: string | undefined;
-    if ((!bucketAvailable || options.precomputeDirectDataUrl) && file.size <= budget.maxBytes) {
+    if ((!hasCloudTarget || options.precomputeDirectDataUrl) && file.size <= budget.maxBytes) {
       const candidateUrl = await blobToDataUrl(file);
       if (candidateUrl.length <= budget.maxChars) {
         directDataUrl = candidateUrl;
       }
     }
-    if (bucketAvailable || directDataUrl) {
+    if (hasCloudTarget || directDataUrl) {
       return {
         uploadFile: file,
         previewUrl: URL.createObjectURL(file),
@@ -442,16 +449,22 @@ export async function prepareImageForUpload(
 
   let source: Awaited<ReturnType<typeof decodeImageSource>> | null = null;
   try {
-    const [decoded, canWebP, bucketAvailable] = await Promise.all([
+    const [decoded, canWebP, vercelBlobAvailable, bucketAvailable] = await Promise.all([
       decodeImageSource(file),
       webpPromise,
+      vercelBlobPromise,
       bucketPromise,
     ]);
     source = decoded;
     const { width, height } = source;
     const suggested = suggestAspectRatio(width, height, 'image');
-    const needsResize = Math.max(width, height) > maxDimension;
-    const needDirect = !bucketAvailable || Boolean(options.precomputeDirectDataUrl);
+    const hasCloudTarget = vercelBlobAvailable || bucketAvailable;
+    const needDirect = !hasCloudTarget || Boolean(options.precomputeDirectDataUrl);
+    const effectiveMaxDimension =
+      folder === 'avatars' && hasCloudTarget && !options.maxDimension
+        ? 512
+        : maxDimension;
+    const needsResize = Math.max(width, height) > effectiveMaxDimension;
 
     // Fast path: already small WebP/JPEG within dimensions
     if (
@@ -483,7 +496,7 @@ export async function prepareImageForUpload(
       };
     }
 
-    const scale = needsResize ? maxDimension / Math.max(width, height) : 1;
+    const scale = needsResize ? effectiveMaxDimension / Math.max(width, height) : 1;
     const targetW = Math.max(1, Math.round(width * scale));
     const targetH = Math.max(1, Math.round(height * scale));
 
@@ -809,6 +822,83 @@ export async function checkStorageBucketAvailable(forceRefresh = false): Promise
   return inFlightBucketProbe;
 }
 
+const VERCEL_BLOB_CACHE_KEY = 'hostelverse_vercel_blob_v1';
+let cachedVercelBlobCheck: { available: boolean; checkedAt: number } | null = null;
+let inFlightVercelBlobProbe: Promise<boolean> | null = null;
+
+function readSessionVercelBlobCache(): { available: boolean; checkedAt: number } | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(VERCEL_BLOB_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { available?: boolean; checkedAt?: number };
+    if (typeof parsed.available === 'boolean' && typeof parsed.checkedAt === 'number') {
+      return { available: parsed.available, checkedAt: parsed.checkedAt };
+    }
+  } catch {
+    // ignore storage access issues
+  }
+  return null;
+}
+
+function writeSessionVercelBlobCache(available: boolean, checkedAt: number): void {
+  cachedVercelBlobCheck = { available, checkedAt };
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(VERCEL_BLOB_CACHE_KEY, JSON.stringify(cachedVercelBlobCheck));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Cached 1s probe checking whether /api/upload has BLOB_READ_WRITE_TOKEN configured.
+ */
+export async function checkVercelBlobAvailable(forceRefresh = false): Promise<boolean> {
+  if (typeof fetch !== 'function' || typeof window === 'undefined') {
+    return false;
+  }
+
+  const now = Date.now();
+  const cached = cachedVercelBlobCheck || readSessionVercelBlobCache();
+  if (!forceRefresh && cached) {
+    cachedVercelBlobCheck = cached;
+    const ttl = cached.available ? 15 * 60_000 : 5 * 60_000;
+    if (now - cached.checkedAt < ttl) {
+      return cached.available;
+    }
+  }
+
+  if (inFlightVercelBlobProbe && !forceRefresh) {
+    return inFlightVercelBlobProbe;
+  }
+
+  inFlightVercelBlobProbe = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    try {
+      const res = await fetch('/api/upload', { method: 'GET', signal: controller.signal });
+      if (!res.ok) {
+        writeSessionVercelBlobCache(false, Date.now());
+        return false;
+      }
+      const data = (await res.json()) as { configured?: boolean };
+      const available = Boolean(data?.configured);
+      writeSessionVercelBlobCache(available, Date.now());
+      return available;
+    } catch {
+      writeSessionVercelBlobCache(false, Date.now());
+      return false;
+    } finally {
+      clearTimeout(timeout);
+      inFlightVercelBlobProbe = null;
+    }
+  })();
+
+  return inFlightVercelBlobProbe;
+}
+
 function mapStorageError(error: unknown): { message: string; retryable: boolean } {
   const code = (error as { code?: string })?.code || '';
   const msg = error instanceof Error ? error.message : String(error);
@@ -878,6 +968,7 @@ export function startResumableUpload(options: {
 
   let cancelled = false;
   let activeTask: UploadTask | null = null;
+  let activeXhr: XMLHttpRequest | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   const cancel = () => {
@@ -885,6 +976,14 @@ export function startResumableUpload(options: {
     if (retryTimer) {
       clearTimeout(retryTimer);
       retryTimer = null;
+    }
+    if (activeXhr) {
+      try {
+        activeXhr.abort();
+      } catch {
+        // Ignore if already settled
+      }
+      activeXhr = null;
     }
     if (activeTask) {
       try {
@@ -913,7 +1012,7 @@ export function startResumableUpload(options: {
     const directInlineFallback = async (): Promise<UploadResult> => {
       if (!contentType.startsWith('image/')) {
         throw new Error(
-          'Video uploads require Firebase Storage to be enabled in Firebase Console -> Storage (Get Started). Photographs and Text-Only posts publish directly right now.'
+          'Video uploads require BLOB_READ_WRITE_TOKEN (Vercel Blob) or Firebase Storage to be enabled. Photographs and Text-Only posts publish directly right now.'
         );
       }
 
@@ -947,11 +1046,143 @@ export function startResumableUpload(options: {
       };
     };
 
-    const [, bucketAvailable] = await Promise.all([
+    const uploadViaVercelBlob = (): Promise<{ ok: true; result: UploadResult } | { ok: false; fallback: boolean; error?: Error }> => {
+      return new Promise((resolve) => {
+        if (cancelled) {
+          resolve({ ok: false, fallback: false, error: new UploadCancelledError() });
+          return;
+        }
+        const xhr = new XMLHttpRequest();
+        activeXhr = xhr;
+        const samples: { t: number; bytes: number }[] = [{ t: performance.now(), bytes: 0 }];
+
+        const emitXhr = (phase: UploadPhase, transferred: number, total: number) => {
+          if (!onProgress) return;
+          const now = performance.now();
+          const safeTotal = Math.max(total, file.size, 1);
+          const percent = Math.min(100, Math.max(0, Math.round((transferred / safeTotal) * 100)));
+          const windowCutoff = now - 3000;
+          while (samples.length > 1 && samples[0].t < windowCutoff) {
+            samples.shift();
+          }
+          const oldest = samples[0];
+          const dtSec = Math.max(0.25, (now - oldest.t) / 1000);
+          const dBytes = Math.max(0, transferred - oldest.bytes);
+          const speedBytesPerSec = transferred > 0 ? Math.round(dBytes / dtSec) : 0;
+          const remaining = Math.max(0, safeTotal - transferred);
+          const etaSeconds =
+            speedBytesPerSec > 256 && remaining > 0
+              ? Math.max(1, Math.ceil(remaining / speedBytesPerSec))
+              : null;
+
+          onProgress({
+            phase,
+            bytesTransferred: transferred,
+            totalBytes: safeTotal,
+            percent,
+            speedBytesPerSec,
+            etaSeconds,
+            elapsedMs: Math.round(now - overallStartedAt),
+            attempt: 1,
+          });
+        };
+
+        const uploadEndpoint = folder === 'avatars' ? '/api/avatar/upload' : '/api/upload';
+        xhr.open('POST', `${uploadEndpoint}?filename=${encodeURIComponent(storagePath)}`);
+        xhr.setRequestHeader('Content-Type', contentType);
+        emitXhr('uploading', 0, file.size);
+
+        xhr.upload.onprogress = (evt) => {
+          if (cancelled) return;
+          const now = performance.now();
+          const loaded = evt.loaded;
+          const total = evt.lengthComputable ? evt.total : file.size;
+          samples.push({ t: now, bytes: loaded });
+          emitXhr(loaded >= total ? 'verifying' : 'uploading', loaded, total);
+        };
+
+        xhr.onabort = () => {
+          activeXhr = null;
+          resolve({ ok: false, fallback: false, error: new UploadCancelledError() });
+        };
+
+        xhr.onerror = () => {
+          activeXhr = null;
+          resolve({
+            ok: false,
+            fallback: true,
+            error: new Error('Network error while uploading to Vercel Blob.'),
+          });
+        };
+
+        xhr.onload = () => {
+          activeXhr = null;
+          if (cancelled) {
+            resolve({ ok: false, fallback: false, error: new UploadCancelledError() });
+            return;
+          }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const payload = JSON.parse(xhr.responseText) as PutBlobResult;
+              if (!payload.url) {
+                resolve({ ok: false, fallback: true, error: new Error('Upload response missing URL.') });
+                return;
+              }
+              emitXhr('completed', file.size, file.size);
+              resolve({
+                ok: true,
+                result: {
+                  downloadUrl: payload.url,
+                  storagePath: payload.pathname || storagePath,
+                  bytesTransferred: file.size,
+                  elapsedMs: Math.max(1, Math.round(performance.now() - overallStartedAt)),
+                  blob: payload,
+                },
+              });
+              return;
+            } catch {
+              resolve({ ok: false, fallback: true, error: new Error('Invalid response from upload endpoint.') });
+              return;
+            }
+          }
+
+          if (xhr.status === 503 || xhr.status === 404) {
+            writeSessionVercelBlobCache(false, Date.now());
+            resolve({ ok: false, fallback: true });
+            return;
+          }
+
+          let errMsg = `Upload failed (${xhr.status}).`;
+          try {
+            const parsed = JSON.parse(xhr.responseText) as { error?: string };
+            if (parsed.error) errMsg = parsed.error;
+          } catch {
+            // ignore JSON parse failure
+          }
+          resolve({ ok: false, fallback: false, error: new Error(errMsg) });
+        };
+
+        xhr.send(file);
+      });
+    };
+
+    const [, vercelBlobAvailable, bucketAvailable] = await Promise.all([
       auth.currentUser.getIdToken(),
+      checkVercelBlobAvailable(),
       checkStorageBucketAvailable(),
     ]);
     if (cancelled) throw new UploadCancelledError();
+
+    if (vercelBlobAvailable) {
+      const blobOutcome = await uploadViaVercelBlob();
+      if (blobOutcome.ok === true) {
+        return blobOutcome.result;
+      }
+      if (!blobOutcome.fallback) {
+        throw blobOutcome.error || new Error('Upload failed.');
+      }
+    }
+
     if (!bucketAvailable) {
       return directInlineFallback();
     }
@@ -1171,6 +1402,38 @@ export async function uploadMediaFile(
 
   const result = await promise;
   return result.downloadUrl;
+}
+
+const AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+export async function uploadAvatarBlob(
+  file: File,
+  userId: string,
+  onProgress?: (telemetry: UploadTelemetry) => void
+): Promise<UploadResult> {
+  const mime = inferMimeType(file);
+  if (!AVATAR_MIME_TYPES.has(mime)) {
+    throw new Error('Please choose a JPEG, PNG, or WebP image for your avatar.');
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('Avatar image must be 5 MB or smaller.');
+  }
+
+  const prepared = await prepareImageForUpload(file, {
+    folder: 'avatars',
+    quality: 0.82,
+  });
+  URL.revokeObjectURL(prepared.previewUrl);
+
+  const { promise } = startResumableUpload({
+    file: prepared.uploadFile,
+    folder: 'avatars',
+    userId,
+    precomputedDataUrl: prepared.directDataUrl,
+    onProgress,
+  });
+
+  return promise;
 }
 
 export function formatBytes(bytes: number): string {

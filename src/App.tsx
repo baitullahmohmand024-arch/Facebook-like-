@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
 import { formatUserFriendlyError } from './lib/firestoreError';
@@ -365,6 +366,7 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <HostelverseRouter />
+        <Analytics />
       </AuthProvider>
     </ToastProvider>
   );

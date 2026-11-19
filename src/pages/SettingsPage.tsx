@@ -16,6 +16,7 @@ import {
   updateUserProfile,
 } from '../services/userService';
 import { Avatar } from '../components/Avatar';
+import { AvatarUploadCard } from '../components/AvatarUploadCard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { sanitizeUsername } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
@@ -237,6 +238,9 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
           Manage your account, security, privacy, notifications, and blocked members
         </p>
       </div>
+
+      {/* Upload Your Avatar */}
+      <AvatarUploadCard />
 
       {/* Edit Account */}
       <form

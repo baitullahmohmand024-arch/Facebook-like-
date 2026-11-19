@@ -572,12 +572,14 @@ export function ProfilePage({
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Avatar src={editAvatarUrl} name={editFullName || member.fullName} size="md" />
+
               <label className="cursor-pointer px-3.5 py-2 rounded-xl border border-white/15 text-xs font-medium text-[#F8F9FA] hover:bg-white/[0.04] flex items-center gap-2">
                 <Camera className="w-3.5 h-3.5 text-[#D4AF37]" />
                 <span>{uploadingImage ? 'Uploading...' : 'Change Avatar'}</span>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg, image/png, image/webp"
                   onChange={(e) => handleMediaUpload(e, 'avatars')}
                   className="hidden"
                 />
@@ -588,7 +590,7 @@ export function ProfilePage({
                 <span>{uploadingImage ? 'Uploading...' : 'Change Cover'}</span>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg, image/png, image/webp"
                   onChange={(e) => handleMediaUpload(e, 'covers')}
                   className="hidden"
                 />

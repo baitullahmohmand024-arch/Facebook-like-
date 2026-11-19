@@ -520,7 +520,7 @@ export function AuthPage({
                   <span>{avatarUploading ? 'Uploading...' : 'Upload Photo'}</span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg, image/png, image/webp"
                     onChange={handleAvatarUpload}
                     className="hidden"
                   />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getInitials } from '../utils/formatters';
 
 interface AvatarProps {
@@ -18,6 +18,10 @@ const SIZE_CLASSES: Record<NonNullable<AvatarProps['size']>, string> = {
 
 export function Avatar({ src, name, size = 'md', className = '' }: AvatarProps) {
   const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [src]);
 
   if (src && !imgFailed) {
     return (
