@@ -35,7 +35,7 @@ export async function createPost(params: {
     authorId: params.author.uid,
     authorUsername: params.author.username,
     authorName: params.author.fullName,
-    authorAvatarUrl: params.author.avatarUrl,
+    authorAvatarUrl: (params.author.avatarUrl || '').slice(0, 32768),
     mediaUrl: params.mediaType === 'text' ? '' : params.mediaUrl.slice(0, 500000),
     ...(params.thumbnailUrl ? { thumbnailUrl: params.thumbnailUrl.slice(0, 100000) } : {}),
     mediaType: params.mediaType,
@@ -167,6 +167,17 @@ export async function fetchPostsByHashtag(tag: string): Promise<Post[]> {
     const snap = await getDocs(q);
     const posts = snap.docs.map((d) => d.data() as Post);
     return posts.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'posts');
+  }
+}
+
+export async function fetchTrendsSample(sampleSize = 100): Promise<Post[]> {
+  const safeLimit = Math.min(100, Math.max(1, Math.round(sampleSize)));
+  try {
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(safeLimit));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data() as Post);
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'posts');
   }

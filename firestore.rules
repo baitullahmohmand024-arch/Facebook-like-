@@ -124,9 +124,9 @@ service cloud.firestore {
       && data.caption is string && data.caption.size() <= 1000
       && (
         (data.mediaType == 'text' && data.mediaUrl.size() == 0 && data.caption.size() >= 1) ||
-        (data.mediaType in ['image', 'video'] && data.mediaUrl.size() >= 1 && (
-          data.mediaUrl.matches('^https://.*') ||
-          data.mediaUrl.matches('^data:image/(webp|jpeg|png|gif);base64,.*')
+        (data.mediaType in ['image', 'video'] && (
+          (data.mediaUrl.size() >= 9 && data.mediaUrl[0:8] == 'https://') ||
+          (data.mediaUrl.size() >= 24 && data.mediaUrl[0:23].matches('^data:image/(webp|jpeg|png|gif);base64,.*'))
         ))
       )
       && data.hashtags is list && data.hashtags.size() <= 10
@@ -254,7 +254,7 @@ service cloud.firestore {
       ])
       && data.keys().hasOnly([
         'id', 'conversationId', 'participantIds', 'senderId',
-        'recipientId', 'text', 'isRead', 'createdAt'
+        'recipientId', 'text', 'isRead', 'readAt', 'createdAt'
       ])
       && isValidId(data.id)
       && isValidId(data.conversationId)
@@ -267,6 +267,7 @@ service cloud.firestore {
       && data.senderId != data.recipientId
       && data.text is string && data.text.size() >= 1 && data.text.size() <= 1000
       && data.isRead is bool
+      && (!('readAt' in data) || data.readAt is timestamp)
       && data.createdAt is timestamp;
     }
 
@@ -665,6 +666,7 @@ service cloud.firestore {
                       && incoming().conversationId == conversationId
                       && incoming().senderId == request.auth.uid
                       && incoming().isRead == false
+                      && !('readAt' in incoming())
                       && incoming().createdAt == request.time
                       && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds
                       && incoming().recipientId in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
@@ -676,10 +678,17 @@ service cloud.firestore {
                       && existing().recipientId == request.auth.uid
                       && incoming().id == existing().id
                       && incoming().conversationId == existing().conversationId
+                      && incoming().participantIds == existing().participantIds
                       && incoming().senderId == existing().senderId
                       && incoming().recipientId == existing().recipientId
+                      && incoming().text == existing().text
                       && incoming().createdAt == existing().createdAt
-                      && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+                      && incoming().isRead == true
+                      && (!('readAt' in incoming()) || incoming().readAt == request.time)
+                      && (
+                        incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) ||
+                        incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'readAt'])
+                      );
       }
     }
 

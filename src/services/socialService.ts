@@ -195,17 +195,42 @@ export async function sendMessage(
 
 export async function markConversationRead(
   conversation: Conversation,
-  myUid: string
+  myUid: string,
+  messages: ChatMessage[] = []
 ): Promise<void> {
   const isA = conversation.participantAId === myUid;
   const unreadCount = isA ? conversation.unreadByA : conversation.unreadByB;
-  if (unreadCount <= 0) return;
+  const unreadMsgs = messages.filter((m) => m.recipientId === myUid && !m.isRead);
+
+  if (unreadCount <= 0 && unreadMsgs.length === 0) return;
 
   try {
-    await updateDoc(doc(db, 'conversations', conversation.id), {
-      ...(isA ? { unreadByA: 0 } : { unreadByB: 0 }),
-      updatedAt: serverTimestamp(),
-    });
+    if (unreadMsgs.length === 0) {
+      await updateDoc(doc(db, 'conversations', conversation.id), {
+        ...(isA ? { unreadByA: 0 } : { unreadByB: 0 }),
+        updatedAt: serverTimestamp(),
+      });
+      return;
+    }
+
+    const chunkSize = 400;
+    for (let i = 0; i < unreadMsgs.length; i += chunkSize) {
+      const slice = unreadMsgs.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const msg of slice) {
+        batch.update(doc(db, 'conversations', conversation.id, 'messages', msg.id), {
+          isRead: true,
+          readAt: serverTimestamp(),
+        });
+      }
+      if (i === 0 && unreadCount > 0) {
+        batch.update(doc(db, 'conversations', conversation.id), {
+          ...(isA ? { unreadByA: 0 } : { unreadByB: 0 }),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `conversations/${conversation.id}`);
   }

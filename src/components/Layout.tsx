@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Bell,
   Compass,
@@ -9,10 +9,18 @@ import {
   PlusSquare,
   Settings,
   Shield,
+  TrendingUp,
   User,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { AppView, UserProfile } from '../types';
 import { Avatar } from './Avatar';
+import {
+  isSoundVfxEnabled,
+  subscribeSoundPreference,
+  toggleSoundVfx,
+} from '../utils/soundVfx';
 
 interface LayoutProps {
   activeView: AppView;
@@ -37,6 +45,11 @@ export function Layout({
   onLogout,
   children,
 }: LayoutProps) {
+  const [soundOn, setSoundOn] = useState(() => isSoundVfxEnabled());
+
+  useEffect(() => {
+    return subscribeSoundPreference(setSoundOn);
+  }, []);
   const desktopNav: {
     id: AppView;
     label: string;
@@ -45,6 +58,7 @@ export function Layout({
   }[] = [
     { id: 'feed', label: 'Home', icon: Home },
     { id: 'explore', label: 'Explore', icon: Compass },
+    { id: 'trends', label: 'Trends', icon: TrendingUp },
     { id: 'moments', label: 'Moments', icon: Film },
     { id: 'messages', label: 'Messages', icon: MessageSquare, count: unreadMessages },
     { id: 'notifications', label: 'Notifications', icon: Bell, count: unreadNotifications },
@@ -119,7 +133,7 @@ export function Layout({
 
         {profile && (
           <div className="p-3 lg:p-4 border-t border-white/[0.06]">
-            <div className="flex items-center justify-center lg:justify-between gap-3">
+            <div className="flex items-center justify-center lg:justify-between gap-2">
               <button
                 type="button"
                 onClick={() => onNavigate('profile')}
@@ -133,15 +147,30 @@ export function Layout({
                   <p className="text-xs text-[#A1A1AA] truncate">@{profile.username}</p>
                 </div>
               </button>
-              <button
-                type="button"
-                onClick={onLogout}
-                title="Log out"
-                aria-label="Log out"
-                className="hidden lg:flex p-2 rounded-xl text-[#A1A1AA] hover:text-[#F8F9FA] hover:bg-white/[0.06] transition-colors shrink-0"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+              <div className="hidden lg:flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => toggleSoundVfx()}
+                  title={soundOn ? 'Mute Sound VFX' : 'Enable Sound VFX'}
+                  aria-label={soundOn ? 'Mute Sound VFX' : 'Enable Sound VFX'}
+                  className={`p-2 rounded-xl transition-colors ${
+                    soundOn
+                      ? 'text-[#D4AF37] hover:bg-white/[0.06]'
+                      : 'text-[#71717A] hover:text-[#F8F9FA] hover:bg-white/[0.06]'
+                  }`}
+                >
+                  {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  title="Log out"
+                  aria-label="Log out"
+                  className="p-2 rounded-xl text-[#A1A1AA] hover:text-[#F8F9FA] hover:bg-white/[0.06] transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -162,12 +191,22 @@ export function Layout({
           </span>
         </button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => toggleSoundVfx()}
+            aria-label={soundOn ? 'Mute Sound VFX' : 'Enable Sound VFX'}
+            className={`min-w-[40px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+              soundOn ? 'text-[#D4AF37]' : 'text-[#71717A]'
+            }`}
+          >
+            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
           <button
             type="button"
             onClick={() => onNavigate('notifications')}
             aria-label="Notifications"
-            className={`relative min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+            className={`relative min-w-[42px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
               activeView === 'notifications' ? 'text-[#D4AF37]' : 'text-[#A1A1AA]'
             }`}
           >
@@ -182,7 +221,7 @@ export function Layout({
             type="button"
             onClick={() => onNavigate('messages')}
             aria-label="Messages"
-            className={`relative min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+            className={`relative min-w-[42px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
               activeView === 'messages' ? 'text-[#D4AF37]' : 'text-[#A1A1AA]'
             }`}
           >
@@ -197,7 +236,7 @@ export function Layout({
             type="button"
             onClick={() => onNavigate('settings')}
             aria-label="Settings"
-            className={`min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+            className={`min-w-[42px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
               activeView === 'settings' ? 'text-[#D4AF37]' : 'text-[#A1A1AA]'
             }`}
           >

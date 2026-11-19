@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, MessageSquare, Search, Send } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Check, CheckCheck, MessageSquare, Search, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { ChatMessage, Conversation, UserProfile } from '../types';
@@ -13,6 +13,7 @@ import {
 import { fetchDiscoverMembers } from '../services/userService';
 import { Avatar } from '../components/Avatar';
 import { formatRelativeTime } from '../utils/formatters';
+import { playSound } from '../utils/soundVfx';
 
 interface MessagesPageProps {
   initialTargetUser?: UserProfile | null;
@@ -37,6 +38,20 @@ export function MessagesPage({
   const [allMembers, setAllMembers] = useState<UserProfile[]>([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevMsgCountRef = useRef<number | null>(null);
+  const markingReadIdsRef = useRef<Set<string>>(new Set());
+  const latestMessagesRef = useRef<ChatMessage[]>([]);
+
+  const selectedConvId = selectedConv?.id || null;
+  const activeConversation = useMemo(
+    () =>
+      selectedConvId
+        ? conversations.find((c) => c.id === selectedConvId) || selectedConv
+        : null,
+    [conversations, selectedConv, selectedConvId]
+  );
+  const activeConversationRef = useRef<Conversation | null>(activeConversation);
+  activeConversationRef.current = activeConversation;
 
   const blockedSet = useMemo(
     () => new Set(privateSettings?.blockedUserIds || []),
@@ -75,20 +90,82 @@ export function MessagesPage({
       });
   }, [profile, initialTargetUser, blockedSet, onClearInitialTarget, showToast]);
 
+  const syncReadReceipts = useCallback(
+    (msgs: ChatMessage[]) => {
+      const conv = activeConversationRef.current;
+      if (!profile || !conv) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
+      const pendingUnread = msgs.filter(
+        (m) =>
+          m.recipientId === profile.uid && !m.isRead && !markingReadIdsRef.current.has(m.id)
+      );
+      const isA = conv.participantAId === profile.uid;
+      const unreadCount = isA ? conv.unreadByA : conv.unreadByB;
+
+      if (pendingUnread.length === 0 && unreadCount <= 0) return;
+
+      pendingUnread.forEach((m) => markingReadIdsRef.current.add(m.id));
+      markConversationRead(conv, profile.uid, pendingUnread).catch(() => {
+        pendingUnread.forEach((m) => markingReadIdsRef.current.delete(m.id));
+      });
+    },
+    [profile]
+  );
+
   // Subscribe to messages for selected conversation
   useEffect(() => {
-    if (!profile || !selectedConv) {
+    markingReadIdsRef.current.clear();
+    latestMessagesRef.current = [];
+    if (!profile || !selectedConvId) {
       setMessages([]);
+      prevMsgCountRef.current = null;
       return;
     }
-    markConversationRead(selectedConv, profile.uid).catch(() => {});
-    const unsub = subscribeMessages(selectedConv.id, profile.uid, (msgs) => {
+    prevMsgCountRef.current = null;
+    if (activeConversationRef.current) {
+      syncReadReceipts([]);
+    }
+    const unsub = subscribeMessages(selectedConvId, profile.uid, (msgs) => {
+      latestMessagesRef.current = msgs;
       setMessages(msgs);
-      markConversationRead(selectedConv, profile.uid).catch(() => {});
+      if (
+        prevMsgCountRef.current !== null &&
+        msgs.length > prevMsgCountRef.current &&
+        msgs[msgs.length - 1]?.senderId !== profile.uid
+      ) {
+        playSound('message');
+      }
+      prevMsgCountRef.current = msgs.length;
+      syncReadReceipts(msgs);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
     });
-    return () => unsub();
-  }, [profile, selectedConv]);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        syncReadReceipts(latestMessagesRef.current);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      unsub();
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [profile, selectedConvId, syncReadReceipts]);
+
+  // Keep conversation unread counter cleared when new messages arrive in the active thread
+  useEffect(() => {
+    if (!activeConversation) return;
+    syncReadReceipts(latestMessagesRef.current);
+  }, [
+    activeConversation,
+    activeConversation?.unreadByA,
+    activeConversation?.unreadByB,
+    syncReadReceipts,
+  ]);
 
   const getOtherParticipant = (conv: Conversation) => {
     if (!profile) {
@@ -134,6 +211,7 @@ export function MessagesPage({
     setMessageText('');
     try {
       await sendMessage(selectedConv, profile.uid, outgoing);
+      playSound('message-sent');
     } catch {
       setMessageText(outgoing);
       showToast({ type: 'error', title: 'Failed to send message' });
@@ -153,7 +231,21 @@ export function MessagesPage({
         .slice(0, 5)
     : [];
 
-  const activeOther = selectedConv ? getOtherParticipant(selectedConv) : null;
+  const activeOther = activeConversation ? getOtherParticipant(activeConversation) : null;
+
+  const { lastMyMessageId, lastSeenMessageId } = useMemo(() => {
+    let lastMine = '';
+    let lastSeen = '';
+    for (const msg of messages) {
+      if (msg.senderId === profile?.uid) {
+        lastMine = msg.id;
+        if (msg.isRead) {
+          lastSeen = msg.id;
+        }
+      }
+    }
+    return { lastMyMessageId: lastMine, lastSeenMessageId: lastSeen };
+  }, [messages, profile?.uid]);
 
   return (
     <div className="bg-[#151519] border border-white/[0.08] rounded-2xl overflow-hidden h-[calc(100vh-11rem)] md:h-[calc(100vh-5rem)] grid grid-cols-1 md:grid-cols-12">
@@ -233,9 +325,24 @@ export function MessagesPage({
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-0.5">
-                      <p className="text-xs text-[#A1A1AA] truncate">
-                        {conv.lastMessageText || `@${other.username}`}
-                      </p>
+                      <div className="flex items-center gap-1 min-w-0">
+                        {conv.lastMessageText && profile && conv.lastMessageSenderId === profile.uid && (
+                          (conv.participantAId === profile.uid ? conv.unreadByB : conv.unreadByA) === 0 ? (
+                            <CheckCheck
+                              className="w-3.5 h-3.5 text-[#D4AF37] shrink-0"
+                              aria-label="Seen"
+                            />
+                          ) : (
+                            <Check
+                              className="w-3.5 h-3.5 text-[#71717A] shrink-0"
+                              aria-label="Sent"
+                            />
+                          )
+                        )}
+                        <p className="text-xs text-[#A1A1AA] truncate">
+                          {conv.lastMessageText || `@${other.username}`}
+                        </p>
+                      </div>
                       {other.unread > 0 && (
                         <span className="font-mono text-[11px] font-semibold text-[#D4AF37] shrink-0">
                           {other.unread}
@@ -292,6 +399,8 @@ export function MessagesPage({
               ) : (
                 messages.map((msg) => {
                   const mine = msg.senderId === profile?.uid;
+                  const isLatestSeen = msg.id === lastSeenMessageId;
+                  const isLatestMine = msg.id === lastMyMessageId;
                   return (
                     <div
                       key={msg.id}
@@ -306,9 +415,38 @@ export function MessagesPage({
                       >
                         {msg.text}
                       </div>
-                      <span className="mt-1 text-[10px] text-[#71717A] px-1">
-                        {formatRelativeTime(msg.createdAt)}
-                      </span>
+                      <div className="mt-1 px-1 flex items-center gap-1.5 text-[10px] text-[#71717A]">
+                        <span>
+                          {msg.createdAt ? formatRelativeTime(msg.createdAt) : 'Sending...'}
+                        </span>
+                        {mine && msg.createdAt && (
+                          msg.isRead ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[#D4AF37]"
+                              title={
+                                msg.readAt
+                                  ? `Seen ${formatRelativeTime(msg.readAt)}`
+                                  : 'Seen'
+                              }
+                            >
+                              <CheckCheck className="w-3.5 h-3.5" aria-label="Seen" />
+                              {isLatestSeen && (
+                                <span className="font-medium">
+                                  {msg.readAt ? `Seen · ${formatRelativeTime(msg.readAt)}` : 'Seen'}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-[#71717A]"
+                              title="Sent"
+                            >
+                              <Check className="w-3.5 h-3.5" aria-label="Sent" />
+                              {isLatestMine && <span>Sent</span>}
+                            </span>
+                          )
+                        )}
+                      </div>
                     </div>
                   );
                 })

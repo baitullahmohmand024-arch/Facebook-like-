@@ -10,6 +10,8 @@ interface LandingPageProps {
   onCreateAccount: () => void;
   onLogin: () => void;
   onExploreCommunity: () => void;
+  onConnectGoogle?: () => Promise<void> | void;
+  connectingGoogle?: boolean;
 }
 
 const HERO_IMG = '/src/assets/images/hero_hostel_rooftop_1794541690689.jpg';
@@ -21,6 +23,8 @@ export function LandingPage({
   onCreateAccount,
   onLogin,
   onExploreCommunity,
+  onConnectGoogle,
+  connectingGoogle = false,
 }: LandingPageProps) {
   const [recentPosts, setRecentPosts] = useState<Post[]>([]);
   const [featuredMembers, setFeaturedMembers] = useState<UserProfile[]>([]);
@@ -75,7 +79,7 @@ export function LandingPage({
               onClick={onCreateAccount}
               className="gold-gradient-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0"
             >
-              Create Your Account
+              Start Account Setup
             </button>
           </div>
         </div>
@@ -101,19 +105,47 @@ export function LandingPage({
                 who shaped your campus years.
               </p>
 
-              <div className="mt-8 flex flex-wrap items-center gap-4">
+              <div className="mt-8 flex flex-wrap items-center gap-3.5">
                 <button
                   type="button"
                   onClick={onCreateAccount}
                   className="gold-gradient-btn px-6 py-3 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all whitespace-nowrap shrink-0"
                 >
-                  <span>Create Your Account</span>
+                  <span>Start Account Setup</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
+                {onConnectGoogle && (
+                  <button
+                    type="button"
+                    disabled={connectingGoogle}
+                    onClick={onConnectGoogle}
+                    className="px-5 py-3 rounded-xl text-sm font-medium border border-[#D4AF37]/40 bg-[#151519] text-[#F8F9FA] hover:border-[#D4AF37] hover:bg-white/[0.04] transition-colors flex items-center gap-2.5 whitespace-nowrap shrink-0 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="#EA4335"
+                        d="M12 5c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.09 14.97 0 12 0 7.31 0 3.25 2.69 1.28 6.6l3.67 2.84C5.81 6.72 8.65 5 12 5z"
+                      />
+                      <path
+                        fill="#4285F4"
+                        d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.7 2.87c2.16-1.99 3.72-4.92 3.72-8.69z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M4.95 14.56A7.01 7.01 0 0 1 4.58 12c0-.89.16-1.75.44-2.56L1.35 6.6A11.96 11.96 0 0 0 0 12c0 1.94.46 3.77 1.28 5.4l3.67-2.84z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.7-2.87c-1.08.72-2.45 1.16-4.23 1.16-3.35 0-6.19-1.72-7.05-4.44L1.28 17.78C3.25 21.69 7.31 24 12 24z"
+                      />
+                    </svg>
+                    <span>{connectingGoogle ? 'Connecting...' : 'Connect with Google'}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onExploreCommunity}
-                  className="px-6 py-3 rounded-xl text-sm font-medium border border-white/15 text-[#F8F9FA] hover:border-[#D4AF37]/50 hover:bg-white/[0.04] transition-colors flex items-center gap-2 whitespace-nowrap shrink-0"
+                  className="px-5 py-3 rounded-xl text-sm font-medium border border-white/15 text-[#F8F9FA] hover:border-[#D4AF37]/50 hover:bg-white/[0.04] transition-colors flex items-center gap-2 whitespace-nowrap shrink-0"
                 >
                   <Compass className="w-4 h-4 text-[#D4AF37]" />
                   <span>Explore Community</span>
@@ -121,7 +153,7 @@ export function LandingPage({
                 <button
                   type="button"
                   onClick={onLogin}
-                  className="px-4 py-3 text-sm font-medium text-[#A1A1AA] hover:text-[#F8F9FA] transition-colors whitespace-nowrap shrink-0"
+                  className="px-3 py-3 text-sm font-medium text-[#A1A1AA] hover:text-[#F8F9FA] transition-colors whitespace-nowrap shrink-0"
                 >
                   Sign In
                 </button>
@@ -349,7 +381,7 @@ export function LandingPage({
               onClick={onCreateAccount}
               className="mt-6 gold-gradient-btn px-5 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-2"
             >
-              <span>Create Your Account</span>
+              <span>Start Account Setup</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

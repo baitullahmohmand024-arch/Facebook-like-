@@ -5,7 +5,7 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth';
-import { Bell, Lock, LogOut, ShieldAlert, Trash2, User } from 'lucide-react';
+import { Bell, Lock, LogOut, ShieldAlert, Trash2, User, Volume2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { UserProfile } from '../types';
@@ -19,6 +19,12 @@ import { Avatar } from '../components/Avatar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { sanitizeUsername } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
+import {
+  isSoundVfxEnabled,
+  playSound,
+  setSoundVfxEnabled,
+  subscribeSoundPreference,
+} from '../utils/soundVfx';
 
 interface SettingsPageProps {
   onLoggedOut: () => void;
@@ -31,6 +37,7 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
     privateSettings,
     setProfile,
     setPrivateSettings,
+    linkGoogleAccount,
     logout,
   } = useAuth();
   const { showToast } = useToast();
@@ -53,6 +60,12 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
   // Delete account modal
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => isSoundVfxEnabled());
+
+  useEffect(() => {
+    return subscribeSoundPreference(setSoundEnabled);
+  }, []);
 
   useEffect(() => {
     if (profile) {
@@ -77,6 +90,25 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
   const hasPasswordProvider = Boolean(
     firebaseUser?.providerData.some((p) => p.providerId === 'password')
   );
+  const hasGoogleProvider = Boolean(
+    firebaseUser?.providerData.some((p) => p.providerId === 'google.com')
+  );
+
+  const handleLinkGoogle = async () => {
+    setLinkingGoogle(true);
+    try {
+      await linkGoogleAccount();
+      showToast({ type: 'success', title: 'Google account connected' });
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Could not connect Google account',
+        description: formatUserFriendlyError(err),
+      });
+    } finally {
+      setLinkingGoogle(false);
+    }
+  };
 
   const handleSaveAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,6 +322,29 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
           </h2>
         </div>
 
+        <div className="rounded-xl bg-[#0A0A0C] border border-white/[0.08] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-[#F8F9FA]">Google Account Connection</p>
+            <p className="text-xs text-[#A1A1AA] mt-0.5">
+              {hasGoogleProvider
+                ? `Connected to ${firebaseUser?.email || 'your Google account'} for one-tap sign-in.`
+                : 'Connect your Google account for effortless one-tap sign-in.'}
+            </p>
+          </div>
+          {hasGoogleProvider ? (
+            <span className="text-xs font-medium text-[#D4AF37] shrink-0">Connected</span>
+          ) : (
+            <button
+              type="button"
+              disabled={linkingGoogle}
+              onClick={handleLinkGoogle}
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-[#D4AF37]/40 text-[#F8F9FA] hover:border-[#D4AF37] hover:bg-white/[0.04] disabled:opacity-50 shrink-0"
+            >
+              {linkingGoogle ? 'Connecting...' : 'Connect Google Account'}
+            </button>
+          )}
+        </div>
+
         {!hasPasswordProvider ? (
           <p className="text-xs text-[#A1A1AA] leading-relaxed">
             You sign in using Google Authentication. Your password is managed securely through your
@@ -401,6 +456,37 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
               </label>
             );
           })}
+
+          <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <Volume2 className="w-4 h-4 text-[#D4AF37] shrink-0" />
+              <div>
+                <p className="text-sm text-[#F8F9FA]">Sound Effects (VFX)</p>
+                <p className="text-xs text-[#A1A1AA]">
+                  Subtle chimes for notifications, messages, uploads, likes, and comments
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!soundEnabled) setSoundVfxEnabled(true);
+                  playSound('notification');
+                }}
+                className="px-2.5 py-1 rounded-lg text-xs font-medium border border-white/10 text-[#A1A1AA] hover:text-[#F8F9FA] hover:border-[#D4AF37]/40 transition-colors"
+              >
+                Test
+              </button>
+              <input
+                type="checkbox"
+                aria-label="Enable Sound Effects (VFX)"
+                checked={soundEnabled}
+                onChange={(e) => setSoundVfxEnabled(e.target.checked)}
+                className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
+              />
+            </div>
+          </div>
         </div>
       </div>
 

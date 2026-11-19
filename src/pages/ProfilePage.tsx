@@ -39,6 +39,7 @@ import { PostCardSkeleton } from '../components/Skeletons';
 import { ReportModal } from '../components/ReportModal';
 import { formatCount, sanitizeUsername } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
+import { playSound } from '../utils/soundVfx';
 
 interface ProfilePageProps {
   targetUserId: string;
@@ -165,6 +166,7 @@ export function ProfilePage({
       const url = await uploadMediaFile(file, folder, currentUser.uid);
       if (folder === 'avatars') setEditAvatarUrl(url);
       else setEditCoverUrl(url);
+      playSound('upload-success');
       showToast({
         type: 'success',
         title: folder === 'avatars' ? 'Avatar ready' : 'Cover image ready',
@@ -225,8 +227,10 @@ export function ProfilePage({
     try {
       if (nextFollowing) {
         await followUser(currentUser, member.uid);
+        playSound('follow');
       } else {
         await unfollowUser(currentUser.uid, member.uid);
+        playSound('unlike');
       }
     } catch {
       setFollowing(!nextFollowing);

@@ -265,6 +265,7 @@
         "recipientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
         "isRead": { "type": "boolean" },
+        "readAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": [

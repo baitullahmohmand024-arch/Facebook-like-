@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ToastProvider } from './context/ToastContext';
+import { ToastProvider, useToast } from './context/ToastContext';
+import { formatUserFriendlyError } from './lib/firestoreError';
 import { AppView, UserProfile } from './types';
 import { Layout } from './components/Layout';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
 import { FeedPage } from './pages/FeedPage';
 import { ExplorePage } from './pages/ExplorePage';
+import { TrendsPage } from './pages/TrendsPage';
 import { MomentsPage } from './pages/MomentsPage';
 import { CreatePostPage } from './pages/CreatePostPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -27,14 +29,17 @@ function HostelverseRouter() {
     platformSettings,
     unreadNotifications,
     unreadMessages,
+    signInWithGoogle,
     logout,
   } = useAuth();
+  const { showToast } = useToast();
 
   const [view, setView] = useState<AppView>('landing');
   const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [profileUserId, setProfileUserId] = useState<string>('');
   const [exploreTag, setExploreTag] = useState<string>('');
   const [messageTargetUser, setMessageTargetUser] = useState<UserProfile | null>(null);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
 
   // Sync authenticated state on initial load
   useEffect(() => {
@@ -51,6 +56,33 @@ function HostelverseRouter() {
   const requireAuth = (mode: 'login' | 'signup' = 'login') => {
     setAuthInitialMode(mode);
     setView('auth');
+  };
+
+  const handleLandingGoogleConnect = async () => {
+    if (connectingGoogle) return;
+    setConnectingGoogle(true);
+    try {
+      await signInWithGoogle();
+      showToast({ type: 'success', title: 'Google account connected' });
+    } catch (err) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/popup-blocked') {
+        requireAuth('signup');
+        showToast({
+          type: 'info',
+          title: 'Allow pop-ups to connect Google',
+          description: 'Tap Continue with Google below to finish connecting your account.',
+        });
+      } else if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        showToast({
+          type: 'error',
+          title: 'Could not connect Google account',
+          description: formatUserFriendlyError(err),
+        });
+      }
+    } finally {
+      setConnectingGoogle(false);
+    }
   };
 
   const handleNavigate = (nextView: AppView) => {
@@ -128,6 +160,8 @@ function HostelverseRouter() {
         onCreateAccount={() => requireAuth('signup')}
         onLogin={() => requireAuth('login')}
         onExploreCommunity={() => setView('explore')}
+        onConnectGoogle={handleLandingGoogleConnect}
+        connectingGoogle={connectingGoogle}
       />
     );
   }
@@ -179,6 +213,13 @@ function HostelverseRouter() {
               </button>
               <button
                 type="button"
+                onClick={() => setView('trends')}
+                className={view === 'trends' ? 'text-[#D4AF37]' : 'hover:text-[#F8F9FA]'}
+              >
+                Trends
+              </button>
+              <button
+                type="button"
                 onClick={() => setView('moments')}
                 className={view === 'moments' ? 'text-[#D4AF37]' : 'hover:text-[#F8F9FA]'}
               >
@@ -203,6 +244,11 @@ function HostelverseRouter() {
               onNavigateCreate={() => requireAuth('signup')}
               onRequireAuth={() => requireAuth('login')}
             />
+          ) : view === 'trends' ? (
+            <TrendsPage
+              onSearchHashtag={openHashtagExplore}
+              onNavigateCreate={() => requireAuth('signup')}
+            />
           ) : view === 'profile' && profileUserId ? (
             <ProfilePage
               targetUserId={profileUserId}
@@ -216,6 +262,7 @@ function HostelverseRouter() {
               initialHashtag={exploreTag}
               onOpenProfile={openMemberProfile}
               onRequireAuth={() => requireAuth('login')}
+              onOpenTrends={() => setView('trends')}
             />
           )}
         </main>
@@ -256,6 +303,14 @@ function HostelverseRouter() {
           initialHashtag={exploreTag}
           onOpenProfile={openMemberProfile}
           onRequireAuth={() => requireAuth('login')}
+          onOpenTrends={() => handleNavigate('trends')}
+        />
+      )}
+
+      {view === 'trends' && (
+        <TrendsPage
+          onSearchHashtag={openHashtagExplore}
+          onNavigateCreate={() => handleNavigate('create')}
         />
       )}
 

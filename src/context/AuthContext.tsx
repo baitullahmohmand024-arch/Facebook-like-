@@ -1,6 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  linkWithPopup,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
@@ -25,6 +26,7 @@ import {
   subscribeNotifications,
 } from '../services/socialService';
 import { PlatformSettings, UserPrivateSettings, UserProfile } from '../types';
+import { playSound } from '../utils/soundVfx';
 
 export interface PendingOnboardingDraft {
   fullName: string;
@@ -47,6 +49,7 @@ interface AuthContextValue {
   unreadMessages: number;
   pendingDraft: PendingOnboardingDraft | null;
   signInWithGoogle: () => Promise<void>;
+  linkGoogleAccount: () => Promise<void>;
   signUpWithEmail: (params: {
     email: string;
     password: string;
@@ -94,6 +97,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [connectionOk, setConnectionOk] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
+  const notifInitializedRef = useRef(false);
+  const prevUnreadMsgsRef = useRef<number | null>(null);
   const [pendingDraft, setPendingDraft] = useState<PendingOnboardingDraft | null>(() => {
     try {
       const saved = localStorage.getItem(DRAFT_KEY);
@@ -177,12 +183,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsub();
   }, [loadUserRecords, refreshPlatformSettings]);
 
-  // Real-time notification and unread message counters
+  // Real-time notification and unread message counters + sound VFX triggers
   useEffect(() => {
-    if (!authReady || !firebaseUser || !profile) return;
+    if (!authReady || !firebaseUser || !profile) {
+      seenNotifIdsRef.current.clear();
+      notifInitializedRef.current = false;
+      prevUnreadMsgsRef.current = null;
+      return;
+    }
+
+    seenNotifIdsRef.current.clear();
+    notifInitializedRef.current = false;
+    prevUnreadMsgsRef.current = null;
 
     const unsubNotifs = subscribeNotifications(firebaseUser.uid, (items) => {
-      setUnreadNotifications(items.filter((n) => !n.isRead).length);
+      const unreadCount = items.filter((n) => !n.isRead).length;
+      setUnreadNotifications(unreadCount);
+
+      if (!notifInitializedRef.current) {
+        items.forEach((n) => seenNotifIdsRef.current.add(n.id));
+        notifInitializedRef.current = true;
+        return;
+      }
+
+      const hasNewUnread = items.some((n) => !n.isRead && !seenNotifIdsRef.current.has(n.id));
+      items.forEach((n) => seenNotifIdsRef.current.add(n.id));
+      if (hasNewUnread) {
+        playSound('notification');
+      }
     });
 
     const unsubConvs = subscribeConversations(firebaseUser.uid, (convs) => {
@@ -191,6 +219,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return acc + (isA ? c.unreadByA : c.unreadByB);
       }, 0);
       setUnreadMessages(totalUnread);
+
+      if (prevUnreadMsgsRef.current !== null && totalUnread > prevUnreadMsgsRef.current) {
+        playSound('message');
+      }
+      prevUnreadMsgsRef.current = totalUnread;
     });
 
     return () => {
@@ -202,6 +235,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, googleProvider);
     await result.user.getIdToken(true);
+    await loadUserRecords(result.user);
+  };
+
+  const linkGoogleAccount = async () => {
+    if (!auth.currentUser) throw new Error('Please sign in first.');
+    const result = await linkWithPopup(auth.currentUser, googleProvider);
+    await result.user.getIdToken(true);
+    setFirebaseUser({ ...result.user } as User);
     await loadUserRecords(result.user);
   };
 
@@ -327,6 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         unreadMessages,
         pendingDraft,
         signInWithGoogle,
+        linkGoogleAccount,
         signUpWithEmail,
         loginWithEmail,
         sendResetEmail,

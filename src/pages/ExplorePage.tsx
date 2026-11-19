@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Film, Heart, MessageCircle, Search, Users, X } from 'lucide-react';
+import { Film, Heart, MessageCircle, Search, TrendingUp, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Post, UserProfile } from '../types';
@@ -22,6 +22,7 @@ interface ExplorePageProps {
   initialHashtag?: string;
   onOpenProfile: (userId: string) => void;
   onRequireAuth: () => void;
+  onOpenTrends?: () => void;
 }
 
 type ExploreFilter = 'all' | 'photos' | 'videos' | 'members';
@@ -30,6 +31,7 @@ export function ExplorePage({
   initialHashtag = '',
   onOpenProfile,
   onRequireAuth,
+  onOpenTrends,
 }: ExplorePageProps) {
   const { profile, privateSettings, isAdmin, platformSettings } = useAuth();
   const { showToast } = useToast();
@@ -195,23 +197,36 @@ export function ExplorePage({
           </p>
         </div>
 
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-[#71717A] absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search @username, #hashtag, or hostel..."
-            className="w-full rounded-xl bg-[#151519] border border-white/10 pl-10 pr-9 py-2.5 text-sm text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37]"
-          />
-          {searchQuery && (
+        <div className="flex items-center gap-2.5 w-full md:w-auto">
+          <div className="relative flex-1 md:w-80">
+            <Search className="w-4 h-4 text-[#71717A] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search @username, #hashtag, or hostel..."
+              className="w-full rounded-xl bg-[#151519] border border-white/10 pl-10 pr-9 py-2.5 text-sm text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37]"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#F8F9FA] p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {onOpenTrends && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
-              aria-label="Clear search"
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#F8F9FA] p-1"
+              onClick={onOpenTrends}
+              className="px-3.5 py-2.5 rounded-xl text-xs font-semibold border border-[#D4AF37]/35 bg-[#151519] text-[#D4AF37] hover:border-[#D4AF37] hover:bg-white/[0.04] transition-colors inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
             >
-              <X className="w-3.5 h-3.5" />
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Trends</span>
             </button>
           )}
         </div>

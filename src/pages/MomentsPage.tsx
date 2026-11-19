@@ -25,6 +25,7 @@ import {
 } from '../services/postService';
 import { Avatar } from '../components/Avatar';
 import { formatCount, formatRelativeTime } from '../utils/formatters';
+import { playSound } from '../utils/soundVfx';
 
 interface MomentsPageProps {
   onOpenProfile: (userId: string) => void;
@@ -125,6 +126,7 @@ export function MomentsPage({
       return;
     }
     const currentlyLiked = likedIds.has(currentVideo.id);
+    playSound(currentlyLiked ? 'unlike' : 'like');
     setLikedIds((prev) => {
       const next = new Set(prev);
       if (currentlyLiked) next.delete(currentVideo.id);
@@ -174,6 +176,7 @@ export function MomentsPage({
         )
       );
       setCommentText('');
+      playSound('comment');
     } catch {
       showToast({ type: 'error', title: 'Could not send comment' });
     } finally {

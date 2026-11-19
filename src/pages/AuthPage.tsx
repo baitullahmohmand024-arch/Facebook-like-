@@ -74,7 +74,40 @@ export function AuthPage({
     if (firebaseUser.photoURL) {
       setAvatarUrl((prev) => prev || firebaseUser.photoURL || '');
     }
-  }, [firebaseUser]);
+    // Auto-suggest an available username for newly connected Google accounts
+    if (!pendingDraft?.username && !username) {
+      const rawBase =
+        firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'hostel_member';
+      let base = sanitizeUsername(rawBase.replace(/\s+/g, '_'));
+      if (base.length < 3) base = `${base}_hv`.slice(0, 24);
+      let cancelled = false;
+      (async () => {
+        const candidates = [
+          base,
+          `${base.slice(0, 20)}_${Math.floor(10 + Math.random() * 89)}`,
+          `${base.slice(0, 19)}_${Math.floor(100 + Math.random() * 899)}`,
+        ];
+        for (const candidate of candidates) {
+          if (cancelled) return;
+          try {
+            const ok = await checkUsernameAvailable(candidate);
+            if (ok && !cancelled) {
+              setUsername((prev) => prev || candidate);
+              return;
+            }
+          } catch {
+            // Fall back to base candidate
+          }
+        }
+        if (!cancelled) {
+          setUsername((prev) => prev || base);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [firebaseUser, pendingDraft?.username, username]);
 
   // Live username availability check
   useEffect(() => {
@@ -113,8 +146,14 @@ export function AuthPage({
     if (code === 'auth/weak-password') {
       return 'Password must be at least 6 characters long.';
     }
-    if (code === 'auth/popup-closed-by-user') {
-      return 'Sign-in popup was closed before completion.';
+    if (code === 'auth/popup-blocked') {
+      return 'Pop-up was blocked by your browser. Please allow pop-ups and try again.';
+    }
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      return 'Google sign-in popup was closed before completion.';
+    }
+    if (code === 'auth/account-exists-with-different-credential') {
+      return 'An account already exists with this email. Sign in with your existing method first, then connect Google in Settings.';
     }
     return formatUserFriendlyError(err, 'Authentication failed. Please try again.');
   };
@@ -361,21 +400,56 @@ export function AuthPage({
           onSubmit={handleOnboardingSubmit}
           className="glass-surface w-full max-w-md rounded-2xl p-7 border border-white/10"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span className="font-display font-bold text-lg text-[#F8F9FA]">HOSTELVERSE</span>
-            <button
-              type="button"
-              onClick={logout}
-              className="text-xs text-[#A1A1AA] hover:text-[#F8F9FA]"
-            >
-              Sign out
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleGoogleSignIn}
+                className="text-xs text-[#D4AF37] hover:text-[#E7C96F] disabled:opacity-50"
+              >
+                Switch Google
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="text-xs text-[#A1A1AA] hover:text-[#F8F9FA]"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
+
+          <div className="mt-5 rounded-xl bg-[#0A0A0C] border border-[#D4AF37]/30 p-3 flex items-center gap-3">
+            {firebaseUser.photoURL ? (
+              <img
+                src={firebaseUser.photoURL}
+                alt={firebaseUser.displayName || 'Connected account'}
+                referrerPolicy="no-referrer"
+                className="w-9 h-9 rounded-full object-cover border border-[#D4AF37]/40 shrink-0"
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center text-xs font-bold text-[#D4AF37] shrink-0">
+                {(firebaseUser.displayName || firebaseUser.email || 'H').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-[#F8F9FA] truncate">
+                {firebaseUser.displayName || 'Account Connected'}
+              </p>
+              <p className="text-[11px] text-[#A1A1AA] truncate">{firebaseUser.email}</p>
+            </div>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#D4AF37] shrink-0">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Connected
+            </span>
+          </div>
+
           <h1 className="mt-5 font-display text-2xl font-bold text-[#F8F9FA]">
-            Complete your member profile
+            Start Account Setup
           </h1>
           <p className="mt-1.5 text-sm text-[#A1A1AA]">
-            Claim your unique handle and let your hostel peers find you.
+            Confirm your unique handle and hostel so peers can discover and connect with you.
           </p>
 
           {errorMsg && (
@@ -465,7 +539,7 @@ export function AuthPage({
             disabled={loading || avatarUploading || usernameStatus === 'taken'}
             className="mt-6 w-full gold-gradient-btn py-2.5 px-4 rounded-xl text-sm font-semibold disabled:opacity-50"
           >
-            {loading ? 'Creating Profile...' : 'Enter HOSTELVERSE'}
+            {loading ? 'Finishing Account Setup...' : 'Complete Account Setup'}
           </button>
         </form>
       </div>
@@ -496,14 +570,14 @@ export function AuthPage({
             {mode === 'login'
               ? 'Welcome back'
               : mode === 'signup'
-              ? 'Create your account'
+              ? 'Start Account Setup'
               : 'Reset password'}
           </h1>
           <p className="mt-1.5 text-sm text-[#A1A1AA]">
             {mode === 'login'
-              ? 'Sign in to reconnect with your hostel community.'
+              ? 'Connect your Google account or sign in with email.'
               : mode === 'signup'
-              ? 'Join your hostel digital universe in seconds.'
+              ? 'Connect your Google account in one tap to set up your HOSTELVERSE profile.'
               : 'Enter your account email to receive a password reset link.'}
           </p>
 
@@ -537,7 +611,7 @@ export function AuthPage({
                   : 'text-[#A1A1AA] hover:text-[#F8F9FA]'
               }`}
             >
-              Create Account
+              Start Account Setup
             </button>
           </div>
 
@@ -552,6 +626,49 @@ export function AuthPage({
           {successMsg && (
             <div className="mt-4 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 p-3 text-xs text-[#E7C96F] leading-relaxed">
               {successMsg}
+            </div>
+          )}
+
+          {mode !== 'forgot' && (
+            <div className="mt-5">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleGoogleSignIn}
+                className="w-full py-3 px-4 rounded-xl text-sm font-semibold border border-[#D4AF37]/50 bg-[#0A0A0C] text-[#F8F9FA] hover:border-[#D4AF37] hover:bg-white/[0.04] transition-colors flex items-center justify-center gap-2.5 disabled:opacity-50"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="#EA4335"
+                    d="M12 5c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.09 14.97 0 12 0 7.31 0 3.25 2.69 1.28 6.6l3.67 2.84C5.81 6.72 8.65 5 12 5z"
+                  />
+                  <path
+                    fill="#4285F4"
+                    d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.7 2.87c2.16-1.99 3.72-4.92 3.72-8.69z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M4.95 14.56A7.01 7.01 0 0 1 4.58 12c0-.89.16-1.75.44-2.56L1.35 6.6A11.96 11.96 0 0 0 0 12c0 1.94.46 3.77 1.28 5.4l3.67-2.84z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.7-2.87c-1.08.72-2.45 1.16-4.23 1.16-3.35 0-6.19-1.72-7.05-4.44L1.28 17.78C3.25 21.69 7.31 24 12 24z"
+                  />
+                </svg>
+                <span>
+                  {loading
+                    ? 'Connecting Google Account...'
+                    : mode === 'signup'
+                    ? 'Start Account Setup with Google'
+                    : 'Continue with Google'}
+                </span>
+              </button>
+
+              <div className="my-5 flex items-center gap-3 text-xs text-[#71717A]">
+                <div className="flex-1 h-px bg-white/[0.08]" />
+                <span>{mode === 'signup' ? 'or set up with email' : 'or sign in with email'}</span>
+                <div className="flex-1 h-px bg-white/[0.08]" />
+              </div>
             </div>
           )}
 
@@ -727,42 +844,6 @@ export function AuthPage({
             </form>
           )}
 
-          {mode !== 'forgot' && (
-            <>
-              <div className="my-5 flex items-center gap-3 text-xs text-[#71717A]">
-                <div className="flex-1 h-px bg-white/[0.08]" />
-                <span>or</span>
-                <div className="flex-1 h-px bg-white/[0.08]" />
-              </div>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleGoogleSignIn}
-                className="w-full py-2.5 px-4 rounded-xl text-sm font-medium border border-white/15 bg-[#0A0A0C] text-[#F8F9FA] hover:border-[#D4AF37]/40 hover:bg-white/[0.03] transition-colors flex items-center justify-center gap-2.5"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="#EA4335"
-                    d="M12 5c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.09 14.97 0 12 0 7.31 0 3.25 2.69 1.28 6.6l3.67 2.84C5.81 6.72 8.65 5 12 5z"
-                  />
-                  <path
-                    fill="#4285F4"
-                    d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.7 2.87c2.16-1.99 3.72-4.92 3.72-8.69z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M4.95 14.56A7.01 7.01 0 0 1 4.58 12c0-.89.16-1.75.44-2.56L1.35 6.6A11.96 11.96 0 0 0 0 12c0 1.94.46 3.77 1.28 5.4l3.67-2.84z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.7-2.87c-1.08.72-2.45 1.16-4.23 1.16-3.35 0-6.19-1.72-7.05-4.44L1.28 17.78C3.25 21.69 7.31 24 12 24z"
-                  />
-                </svg>
-                <span>Continue with Google</span>
-              </button>
-            </>
-          )}
         </div>
       </div>
     </div>

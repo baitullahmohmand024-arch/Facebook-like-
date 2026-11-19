@@ -5,6 +5,7 @@ export type AppView =
   | 'auth'
   | 'feed'
   | 'explore'
+  | 'trends'
   | 'moments'
   | 'messages'
   | 'notifications'
@@ -120,6 +121,7 @@ export interface ChatMessage {
   recipientId: string;
   text: string;
   isRead: boolean;
+  readAt?: Timestamp | null;
   createdAt: Timestamp | null;
 }
 

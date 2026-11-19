@@ -29,6 +29,7 @@ import {
 import { createPost } from '../services/postService';
 import { parseHashtags } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
+import { playSound } from '../utils/soundVfx';
 
 interface CreatePostPageProps {
   onPublished: () => void;
@@ -140,6 +141,7 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
       setInstantPreviewUrl(null);
       setAspectRatio(nextPrepared.suggestedAspectRatio);
       setStage('idle');
+      playSound('ui-tap');
     } catch (err) {
       if (seq !== selectionSeqRef.current) return;
       if (instantPreviewRef.current) {
@@ -208,6 +210,7 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
     submittingRef.current = true;
     setErrorMsg('');
     const startedAt = performance.now();
+    playSound('upload-start');
 
     try {
       // Direct Text-Only Post (instant Firestore save, zero media upload wait)
@@ -222,6 +225,7 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
           hashtags: parsedTags,
         });
         void refreshUserState();
+        playSound('upload-success');
         const elapsedSec = ((performance.now() - startedAt) / 1000).toFixed(1);
         showToast({
           type: 'success',
@@ -318,6 +322,7 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
       });
 
       void refreshUserState();
+      playSound('upload-success');
       const totalSec = ((performance.now() - startedAt) / 1000).toFixed(1);
       showToast({
         type: 'success',
@@ -329,8 +334,10 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
       cancelActiveUploadRef.current = null;
       setStage('failed');
       if (err instanceof UploadCancelledError) {
+        playSound('unlike');
         setErrorMsg('Upload cancelled. Your caption, hashtags, and media are preserved.');
       } else {
+        playSound('error');
         setErrorMsg(formatUserFriendlyError(err, 'Could not publish your post. Please try again.'));
       }
     } finally {

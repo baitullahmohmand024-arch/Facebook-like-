@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import { ToastMessage } from '../types';
+import { playSound } from '../utils/soundVfx';
 
 interface ToastContextValue {
   showToast: (toast: Omit<ToastMessage, 'id'>) => void;
@@ -16,6 +17,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showToast = useCallback((toast: Omit<ToastMessage, 'id'>) => {
+    if (toast.type === 'error') {
+      playSound('error');
+    }
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setToasts((prev) => [...prev.slice(-3), { ...toast, id }]);
     setTimeout(() => {

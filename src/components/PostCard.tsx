@@ -20,6 +20,7 @@ import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ReportModal } from './ReportModal';
 import { formatUserFriendlyError } from '../lib/firestoreError';
+import { playSound } from '../utils/soundVfx';
 
 interface PostCardProps {
   post: Post;
@@ -110,6 +111,7 @@ export function PostCard({
       setComments((prev) => [...prev, created]);
       setLocalCommentsCount((c) => c + 1);
       setCommentText('');
+      playSound('comment');
     } catch (err) {
       showToast({
         type: 'error',
@@ -135,6 +137,7 @@ export function PostCard({
     const shareUrl = `${window.location.origin}/?post=${post.id}`;
     try {
       await navigator.clipboard.writeText(shareUrl);
+      playSound('ui-tap');
       showToast({
         type: 'success',
         title: 'Link copied',
@@ -305,7 +308,14 @@ export function PostCard({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => (currentUser ? onToggleLike(post) : onRequireAuth?.())}
+              onClick={() => {
+                if (currentUser) {
+                  playSound(isLiked ? 'unlike' : 'like');
+                  void onToggleLike(post);
+                } else {
+                  onRequireAuth?.();
+                }
+              }}
               className={`min-h-[40px] px-2.5 rounded-xl flex items-center gap-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                 isLiked
                   ? 'text-[#D4AF37] bg-[#D4AF37]/10'
@@ -343,7 +353,14 @@ export function PostCard({
 
           <button
             type="button"
-            onClick={() => (currentUser ? onToggleSave(post) : onRequireAuth?.())}
+            onClick={() => {
+              if (currentUser) {
+                playSound(isSaved ? 'unlike' : 'save');
+                void onToggleSave(post);
+              } else {
+                onRequireAuth?.();
+              }
+            }}
             className={`min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl transition-colors ${
               isSaved
                 ? 'text-[#D4AF37] bg-[#D4AF37]/10'
