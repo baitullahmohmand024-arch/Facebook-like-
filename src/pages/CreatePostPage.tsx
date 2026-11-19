@@ -327,7 +327,7 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
       showToast({
         type: 'success',
         title: 'Story published',
-        description: `Live in the HOSTELVERSE feed in ${totalSec}s.`,
+        description: `Live in the Hostel Friend feed in ${totalSec}s.`,
       });
       onPublished();
     } catch (err) {
@@ -356,13 +356,13 @@ export function CreatePostPage({ onPublished, onCancel }: CreatePostPageProps) {
 
   const getStageMessage = (): string => {
     if (stage === 'optimizing') return 'Optimizing media preview...';
-    if (stage === 'saving') return 'Publishing to HOSTELVERSE feed...';
+    if (stage === 'saving') return 'Publishing to Hostel Friend feed...';
     if (!telemetry) return 'Preparing upload...';
     if (telemetry.phase === 'paused-offline') return 'Paused — waiting for network connection...';
     if (telemetry.phase === 'retrying') return `Reconnecting (attempt ${telemetry.attempt})...`;
     if (telemetry.phase === 'stalled') return 'Connection looks stalled — wait, cancel, or retry.';
     if (telemetry.phase === 'verifying') return 'Confirming download URL...';
-    return `Uploading ${prepared?.formatLabel || 'media'} to HOSTELVERSE...`;
+    return `Uploading ${prepared?.formatLabel || 'media'} to Hostel Friend...`;
   };
 
   const savedPercent =

@@ -5,6 +5,7 @@ import { ToastProvider, useToast } from './context/ToastContext';
 import { formatUserFriendlyError } from './lib/firestoreError';
 import { AppView, UserProfile } from './types';
 import { Layout } from './components/Layout';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
 import { FeedPage } from './pages/FeedPage';
@@ -137,10 +138,19 @@ function HostelverseRouter() {
   if (!authReady) {
     return (
       <div className="min-h-screen bg-[#0A0A0C] flex flex-col items-center justify-center gap-4">
-        <div className="w-10 h-10 rounded-xl gold-gradient-btn flex items-center justify-center font-display font-bold text-lg">
-          H
+        <img
+          src="/icons/icon-192.png"
+          alt="Hostel Friend"
+          className="w-16 h-16 rounded-2xl object-cover border border-white/15 shadow-lg"
+        />
+        <div className="text-center">
+          <p className="font-display font-bold text-lg tracking-tight text-[#F8F9FA]">
+            Hostel Friend
+          </p>
+          <p className="mt-0.5 text-[11px] tracking-[0.16em] uppercase text-[#00C8FF]">
+            Connect • Share • Discover
+          </p>
         </div>
-        <p className="text-xs tracking-[0.16em] uppercase text-[#A1A1AA]">HOSTELVERSE</p>
       </div>
     );
   }
@@ -173,7 +183,7 @@ function HostelverseRouter() {
         <div className="glass-surface max-w-md w-full rounded-2xl p-8 text-center border border-rose-500/30">
           <h1 className="font-display text-xl font-bold text-[#F8F9FA]">Account Suspended</h1>
           <p className="mt-2 text-sm text-[#A1A1AA] leading-relaxed">
-            Your HOSTELVERSE account is currently suspended following a community safety review.
+            Your Hostel Friend account is currently suspended following a community safety review.
           </p>
           <button
             type="button"
@@ -199,9 +209,14 @@ function HostelverseRouter() {
             <button
               type="button"
               onClick={() => setView('landing')}
-              className="font-display font-bold tracking-tight text-lg text-[#F8F9FA] whitespace-nowrap shrink-0"
+              className="flex items-center gap-2.5 font-display font-bold tracking-tight text-lg text-[#F8F9FA] whitespace-nowrap shrink-0"
             >
-              HOSTELVERSE
+              <img
+                src="/icons/icon-192.png"
+                alt="Hostel Friend"
+                className="w-7 h-7 rounded-lg object-cover border border-white/15"
+              />
+              <span>Hostel Friend</span>
             </button>
 
             <nav className="flex items-center gap-6 text-sm font-medium text-[#A1A1AA]">
@@ -233,7 +248,7 @@ function HostelverseRouter() {
               onClick={() => requireAuth('signup')}
               className="gold-gradient-btn px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0"
             >
-              Join HOSTELVERSE
+              Join Hostel Friend
             </button>
           </div>
         </header>
@@ -366,6 +381,7 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <HostelverseRouter />
+        <OfflineIndicator />
         <Analytics />
       </AuthProvider>
     </ToastProvider>

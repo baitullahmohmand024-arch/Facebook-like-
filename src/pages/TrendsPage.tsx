@@ -193,7 +193,7 @@ export function TrendsPage({ onSearchHashtag, onNavigateCreate }: TrendsPageProp
             Community Trends
           </h1>
           <p className="text-xs text-[#A1A1AA] mt-0.5">
-            Popular hashtags and peak posting &amp; engagement hours across HOSTELVERSE
+            Popular hashtags and peak posting &amp; engagement hours across Hostel Friend
           </p>
         </div>
 

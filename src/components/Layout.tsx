@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AppView, UserProfile } from '../types';
 import { Avatar } from './Avatar';
+import { PWAInstallButton } from './PWAInstallButton';
 import {
   isSoundVfxEnabled,
   subscribeSoundPreference,
@@ -91,13 +92,15 @@ export function Layout({
           <button
             type="button"
             onClick={() => onNavigate('feed')}
-            className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] rounded-lg"
+            className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00C8FF] rounded-lg"
           >
-            <div className="w-8 h-8 rounded-lg gold-gradient-btn flex items-center justify-center font-display font-bold text-sm shrink-0">
-              H
-            </div>
+            <img
+              src="/icons/icon-192.png"
+              alt="Hostel Friend"
+              className="w-8 h-8 rounded-lg object-cover border border-white/15 shrink-0"
+            />
             <span className="hidden lg:inline font-display font-bold tracking-tight text-lg text-[#F8F9FA] whitespace-nowrap shrink-0">
-              HOSTELVERSE
+              Hostel Friend
             </span>
           </button>
         </div>
@@ -130,6 +133,10 @@ export function Layout({
             );
           })}
         </nav>
+
+        <div className="px-3 pb-2">
+          <PWAInstallButton variant="sidebar" />
+        </div>
 
         {profile && (
           <div className="p-3 lg:p-4 border-t border-white/[0.06]">
@@ -183,15 +190,18 @@ export function Layout({
           onClick={() => onNavigate('feed')}
           className="flex items-center gap-2.5 whitespace-nowrap shrink-0"
         >
-          <div className="w-7 h-7 rounded-lg gold-gradient-btn flex items-center justify-center font-display font-bold text-xs">
-            H
-          </div>
+          <img
+            src="/icons/icon-192.png"
+            alt="Hostel Friend"
+            className="w-7 h-7 rounded-lg object-cover border border-white/15 shrink-0"
+          />
           <span className="font-display font-bold tracking-tight text-base text-[#F8F9FA]">
-            HOSTELVERSE
+            Hostel Friend
           </span>
         </button>
 
         <div className="flex items-center gap-0.5">
+          <PWAInstallButton variant="compact" className="mr-1" />
           <button
             type="button"
             onClick={() => toggleSoundVfx()}

@@ -190,7 +190,7 @@ export function ExplorePage({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-[#F8F9FA]">
-            Explore HOSTELVERSE
+            Explore Hostel Friend
           </h1>
           <p className="text-xs text-[#A1A1AA] mt-0.5">
             Discover trending photographs, reels, hashtags, and fellow hostel members

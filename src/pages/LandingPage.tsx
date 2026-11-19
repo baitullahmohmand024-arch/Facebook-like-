@@ -4,6 +4,7 @@ import { Post, UserProfile } from '../types';
 import { fetchPostsPage } from '../services/postService';
 import { fetchDiscoverMembers } from '../services/userService';
 import { Avatar } from '../components/Avatar';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 import { formatCount, formatRelativeTime } from '../utils/formatters';
 
 interface LandingPageProps {
@@ -53,9 +54,14 @@ export function LandingPage({
         <div className="max-w-7xl mx-auto px-5 sm:px-8 h-18 flex items-center justify-between gap-8">
           <a
             href="#top"
-            className="font-display font-bold tracking-tight text-lg text-[#F8F9FA] whitespace-nowrap shrink-0"
+            className="flex items-center gap-2.5 font-display font-bold tracking-tight text-lg text-[#F8F9FA] whitespace-nowrap shrink-0"
           >
-            HOSTELVERSE
+            <img
+              src="/icons/icon-192.png"
+              alt="Hostel Friend"
+              className="w-8 h-8 rounded-lg object-cover border border-white/15"
+            />
+            <span>Hostel Friend</span>
           </a>
 
           <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-[#A1A1AA]">
@@ -73,7 +79,8 @@ export function LandingPage({
             </a>
           </nav>
 
-          <div className="shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
+            <PWAInstallButton variant="compact" />
             <button
               type="button"
               onClick={onCreateAccount}
@@ -90,8 +97,8 @@ export function LandingPage({
         <div className="max-w-7xl mx-auto px-5 sm:px-8 py-14 lg:py-24">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-stretch">
             <div className="lg:col-span-6 flex flex-col justify-center">
-              <p className="text-xs font-medium tracking-[0.14em] uppercase text-[#D4AF37]">
-                Your Hostel. Your Stories. Your World.
+              <p className="text-xs font-medium tracking-[0.14em] uppercase text-[#00C8FF]">
+                Connect • Share • Discover
               </p>
               <h1
                 className="mt-4 font-display font-bold tracking-tight text-[#F8F9FA] leading-[1.06]"
@@ -193,7 +200,7 @@ export function LandingPage({
               Designed for the stillness and spark of student life.
             </h2>
             <p className="text-[#A1A1AA] text-base leading-relaxed">
-              Ordinary feeds bury real memories beneath algorithmic noise. HOSTELVERSE preserves
+              Ordinary feeds bury real memories beneath algorithmic noise. Hostel Friend preserves
               your hostel corridor friendships, studio sessions, and spontaneous midnight walks in a
               calm, obsidian-and-gold digital archive.
             </p>
@@ -345,7 +352,7 @@ export function LandingPage({
               Live From the Community
             </h2>
             <p className="mt-2 text-sm text-[#A1A1AA]">
-              Real stories and members currently active on HOSTELVERSE.
+              Real stories and members currently active on Hostel Friend.
             </p>
           </div>
           <button
@@ -374,7 +381,7 @@ export function LandingPage({
             </p>
             <p className="mt-2 text-sm text-[#A1A1AA] max-w-md mx-auto">
               Create your profile in seconds and publish the inaugural photograph or video story on
-              HOSTELVERSE.
+              Hostel Friend.
             </p>
             <button
               type="button"
@@ -447,7 +454,7 @@ export function LandingPage({
 
         {featuredMembers.length > 0 && (
           <div className="mt-10 pt-8 border-t border-white/[0.06]">
-            <p className="text-xs font-medium text-[#A1A1AA] mb-4">Active Hostelverse Members</p>
+            <p className="text-xs font-medium text-[#A1A1AA] mb-4">Active Hostel Friend Members</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               {featuredMembers.map((member) => (
                 <button
@@ -470,9 +477,16 @@ export function LandingPage({
 
       {/* Quiet Footer */}
       <footer className="max-w-7xl mx-auto px-5 sm:px-8 py-12 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-xs text-[#71717A]">
-        <div>
-          <p className="font-display font-semibold text-sm text-[#F8F9FA]">HOSTELVERSE</p>
-          <p className="mt-1">Your Hostel. Your Stories. Your World.</p>
+        <div className="flex items-center gap-3">
+          <img
+            src="/icons/icon-192.png"
+            alt="Hostel Friend"
+            className="w-8 h-8 rounded-lg object-cover border border-white/15"
+          />
+          <div>
+            <p className="font-display font-semibold text-sm text-[#F8F9FA]">Hostel Friend</p>
+            <p className="mt-0.5">Connect • Share • Discover</p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-6 text-[#A1A1AA]">
           <button type="button" onClick={onExploreCommunity} className="hover:text-[#F8F9FA]">

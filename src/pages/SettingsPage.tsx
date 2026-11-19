@@ -18,6 +18,7 @@ import {
 import { Avatar } from '../components/Avatar';
 import { AvatarUploadCard } from '../components/AvatarUploadCard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 import { sanitizeUsername } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
 import {
@@ -490,6 +491,16 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
                 className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
               />
             </div>
+          </div>
+
+          <div className="pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-[#F8F9FA]">Mobile & Desktop App</p>
+              <p className="text-xs text-[#A1A1AA]">
+                Install Hostel Friend on your home screen for fast app launch
+              </p>
+            </div>
+            <PWAInstallButton variant="card" />
           </div>
         </div>
       </div>

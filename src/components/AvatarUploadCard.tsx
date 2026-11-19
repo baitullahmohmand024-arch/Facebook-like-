@@ -174,7 +174,7 @@ export function AvatarUploadCard() {
             </p>
           ) : (
             <p className="text-xs text-[#71717A]">
-              Choose a photo and tap Upload to save it to your HOSTELVERSE profile.
+              Choose a photo and tap Upload to save it to your Hostel Friend profile.
             </p>
           )}
         </div>

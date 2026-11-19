@@ -201,7 +201,7 @@ export function MomentsPage({
         </h1>
         <p className="mt-2 text-sm text-[#A1A1AA] leading-relaxed">
           Upload a vertical video clip from your hostel rooftop, studio session, or campus walk to
-          kick off HOSTELVERSE Moments.
+          kick off Hostel Friend Moments.
         </p>
         <button
           type="button"

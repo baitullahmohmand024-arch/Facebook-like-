@@ -485,7 +485,7 @@ export function PostCard({
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Delete this post?"
-        description="This action permanently removes the post and its engagement from HOSTELVERSE."
+        description="This action permanently removes the post and its engagement from Hostel Friend."
         confirmLabel="Delete Post"
         destructive
         loading={deleting}

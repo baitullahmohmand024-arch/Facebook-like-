@@ -183,7 +183,7 @@ export function AuthPage({
     setLoading(true);
     try {
       await loginWithEmail(email, password);
-      showToast({ type: 'success', title: 'Welcome back to HOSTELVERSE' });
+      showToast({ type: 'success', title: 'Welcome back to Hostel Friend' });
     } catch (err) {
       setErrorMsg(mapAuthError(err));
     } finally {
@@ -277,7 +277,7 @@ export function AuthPage({
         hostel,
         avatarUrl,
       });
-      showToast({ type: 'success', title: 'Profile created', description: 'Welcome to HOSTELVERSE.' });
+      showToast({ type: 'success', title: 'Profile created', description: 'Welcome to Hostel Friend.' });
       onAuthenticated();
     } catch (err) {
       setErrorMsg(formatUserFriendlyError(err, 'Unable to finish profile setup.'));
@@ -401,7 +401,14 @@ export function AuthPage({
           className="glass-surface w-full max-w-md rounded-2xl p-7 border border-white/10"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="font-display font-bold text-lg text-[#F8F9FA]">HOSTELVERSE</span>
+            <div className="flex items-center gap-2.5">
+              <img
+                src="/icons/icon-192.png"
+                alt="Hostel Friend"
+                className="w-7 h-7 rounded-lg object-cover border border-white/15"
+              />
+              <span className="font-display font-bold text-lg text-[#F8F9FA]">Hostel Friend</span>
+            </div>
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -555,15 +562,22 @@ export function AuthPage({
           className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-[#A1A1AA] hover:text-[#F8F9FA] transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to HOSTELVERSE</span>
+          <span>Back to Hostel Friend</span>
         </button>
 
         <div className="glass-surface rounded-2xl p-7 border border-white/10 shadow-2xl">
           <div className="flex items-center justify-between">
-            <span className="font-display font-bold tracking-tight text-lg text-[#F8F9FA]">
-              HOSTELVERSE
-            </span>
-            <ShieldCheck className="w-4 h-4 text-[#D4AF37]" />
+            <div className="flex items-center gap-2.5">
+              <img
+                src="/icons/icon-192.png"
+                alt="Hostel Friend"
+                className="w-7 h-7 rounded-lg object-cover border border-white/15"
+              />
+              <span className="font-display font-bold tracking-tight text-lg text-[#F8F9FA]">
+                Hostel Friend
+              </span>
+            </div>
+            <ShieldCheck className="w-4 h-4 text-[#00C8FF]" />
           </div>
 
           <h1 className="mt-4 font-display text-2xl font-bold text-[#F8F9FA]">
@@ -577,7 +591,7 @@ export function AuthPage({
             {mode === 'login'
               ? 'Connect your Google account or sign in with email.'
               : mode === 'signup'
-              ? 'Connect your Google account in one tap to set up your HOSTELVERSE profile.'
+              ? 'Connect your Google account in one tap to set up your Hostel Friend profile.'
               : 'Enter your account email to receive a password reset link.'}
           </p>
 
