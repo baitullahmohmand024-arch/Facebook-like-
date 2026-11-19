@@ -350,7 +350,26 @@ export function ExplorePage({
                   className="break-inside-avoid w-full text-left group relative rounded-2xl overflow-hidden border border-white/[0.08] hover:border-[#D4AF37]/40 bg-[#151519] transition-colors block"
                 >
                   <div className="relative bg-[#0A0A0C]">
-                    {post.mediaType === 'video' ? (
+                    {post.mediaType === 'text' ? (
+                      <div className="p-5 space-y-4 bg-[#151519]">
+                        <p className="text-sm text-[#F8F9FA] leading-relaxed line-clamp-6 whitespace-pre-wrap break-words">
+                          {post.caption}
+                        </p>
+                        <div className="flex items-center justify-between text-xs text-[#A1A1AA] pt-2 border-t border-white/[0.06]">
+                          <span className="font-medium truncate">@{post.authorUsername}</span>
+                          <span className="flex items-center gap-3 font-mono tabular-nums shrink-0">
+                            <span className="flex items-center gap-1">
+                              <Heart className="w-3.5 h-3.5 text-[#D4AF37]" />
+                              {formatCount(post.likesCount)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              {formatCount(post.commentsCount)}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    ) : post.mediaType === 'video' ? (
                       <>
                         {post.thumbnailUrl ? (
                           <img
@@ -384,21 +403,23 @@ export function ExplorePage({
                         className="w-full h-auto object-cover group-hover:scale-[1.02] transition-transform duration-300"
                       />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end p-4">
-                      <div className="w-full flex items-center justify-between text-xs text-[#F8F9FA]">
-                        <span className="font-medium truncate">@{post.authorUsername}</span>
-                        <span className="flex items-center gap-3 font-mono tabular-nums shrink-0">
-                          <span className="flex items-center gap-1">
-                            <Heart className="w-3.5 h-3.5 text-[#D4AF37]" />
-                            {formatCount(post.likesCount)}
+                    {post.mediaType !== 'text' && (
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end p-4">
+                        <div className="w-full flex items-center justify-between text-xs text-[#F8F9FA]">
+                          <span className="font-medium truncate">@{post.authorUsername}</span>
+                          <span className="flex items-center gap-3 font-mono tabular-nums shrink-0">
+                            <span className="flex items-center gap-1">
+                              <Heart className="w-3.5 h-3.5 text-[#D4AF37]" />
+                              {formatCount(post.likesCount)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              {formatCount(post.commentsCount)}
+                            </span>
                           </span>
-                          <span className="flex items-center gap-1">
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            {formatCount(post.commentsCount)}
-                          </span>
-                        </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </button>
               ))}

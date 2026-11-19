@@ -140,7 +140,7 @@ export async function createUserProfileAndSettings(params: {
     fullName: params.fullName.trim().slice(0, 64) || cleanUsername,
     bio: '',
     hostel: (params.hostel || '').trim().slice(0, 80),
-    avatarUrl: (params.avatarUrl || '').slice(0, 1024),
+    avatarUrl: (params.avatarUrl || '').slice(0, 32768),
     coverUrl: defaultCover,
     followersCount: 0,
     followingCount: 0,
@@ -218,10 +218,10 @@ export async function updateUserProfile(
     payload.hostel = updates.hostel.trim().slice(0, 80);
   }
   if (typeof updates.avatarUrl === 'string') {
-    payload.avatarUrl = updates.avatarUrl.slice(0, 1024);
+    payload.avatarUrl = updates.avatarUrl.slice(0, 32768);
   }
   if (typeof updates.coverUrl === 'string') {
-    payload.coverUrl = updates.coverUrl.slice(0, 1024);
+    payload.coverUrl = updates.coverUrl.slice(0, 250000);
   }
 
   if (typeof updates.username === 'string') {

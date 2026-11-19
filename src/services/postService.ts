@@ -36,8 +36,8 @@ export async function createPost(params: {
     authorUsername: params.author.username,
     authorName: params.author.fullName,
     authorAvatarUrl: params.author.avatarUrl,
-    mediaUrl: params.mediaUrl.slice(0, 2048),
-    ...(params.thumbnailUrl ? { thumbnailUrl: params.thumbnailUrl.slice(0, 2048) } : {}),
+    mediaUrl: params.mediaType === 'text' ? '' : params.mediaUrl.slice(0, 500000),
+    ...(params.thumbnailUrl ? { thumbnailUrl: params.thumbnailUrl.slice(0, 100000) } : {}),
     mediaType: params.mediaType,
     aspectRatio: params.aspectRatio,
     caption: params.caption.trim().slice(0, 1000),
@@ -60,38 +60,41 @@ export async function createPost(params: {
     handleFirestoreError(error, OperationType.CREATE, `posts/${postRef.id}`);
   }
 
-  // Send @mention notifications cleanly if caption mentions existing usernames
+  // Send @mention notifications in the background so post publishing returns immediately
   const mentionMatches = Array.from(
     new Set((params.caption.match(/@([a-zA-Z0-9_]{3,24})/g) || []).map((m) => m.slice(1).toLowerCase()))
   ).slice(0, 5);
 
   if (mentionMatches.length > 0) {
-    for (const handle of mentionMatches) {
-      if (handle === params.author.usernameLower) continue;
-      try {
-        const uq = query(collection(db, 'users'), where('usernameLower', '==', handle), limit(1));
-        const uSnap = await getDocs(uq);
-        if (!uSnap.empty) {
-          const target = uSnap.docs[0].data() as UserProfile;
-          const notifRef = doc(collection(db, 'notifications'));
-          await setDoc(notifRef, {
-            id: notifRef.id,
-            recipientId: target.uid,
-            actorId: params.author.uid,
-            actorUsername: params.author.username,
-            actorName: params.author.fullName,
-            actorAvatarUrl: params.author.avatarUrl,
-            type: 'mention',
-            postId: postRef.id,
-            message: `@${params.author.username} mentioned you in a post.`,
-            isRead: false,
-            createdAt: serverTimestamp(),
-          });
-        }
-      } catch {
-        // Ignore non-critical mention notification failures
-      }
-    }
+    void Promise.all(
+      mentionMatches
+        .filter((handle) => handle !== params.author.usernameLower)
+        .map(async (handle) => {
+          try {
+            const uq = query(collection(db, 'users'), where('usernameLower', '==', handle), limit(1));
+            const uSnap = await getDocs(uq);
+            if (!uSnap.empty) {
+              const target = uSnap.docs[0].data() as UserProfile;
+              const notifRef = doc(collection(db, 'notifications'));
+              await setDoc(notifRef, {
+                id: notifRef.id,
+                recipientId: target.uid,
+                actorId: params.author.uid,
+                actorUsername: params.author.username,
+                actorName: params.author.fullName,
+                actorAvatarUrl: params.author.avatarUrl,
+                type: 'mention',
+                postId: postRef.id,
+                message: `@${params.author.username} mentioned you in a post.`,
+                isRead: false,
+                createdAt: serverTimestamp(),
+              });
+            }
+          } catch {
+            // Ignore non-critical mention notification failures
+          }
+        })
+    );
   }
 
   return postRef.id;

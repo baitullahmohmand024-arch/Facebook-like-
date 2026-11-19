@@ -363,7 +363,19 @@ export function LandingPage({
                 className="text-left bg-[#151519] border border-white/[0.08] hover:border-[#D4AF37]/40 rounded-2xl overflow-hidden transition-colors group"
               >
                 <div className="aspect-[4/3] bg-[#0A0A0C] overflow-hidden">
-                  {post.mediaType === 'video' ? (
+                  {post.mediaType === 'text' ? (
+                    <div className="w-full h-full p-4 flex flex-col justify-between bg-gradient-to-br from-[#151519] via-[#0A0A0C] to-[#151519] border-b border-white/[0.06]">
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-[#D4AF37] font-semibold">
+                        Hostel Note
+                      </span>
+                      <p className="text-sm text-[#F8F9FA] font-medium leading-relaxed line-clamp-4">
+                        {post.caption}
+                      </p>
+                      <span className="text-[11px] text-[#71717A] truncate">
+                        {post.hashtags.slice(0, 2).map((t) => `#${t}`).join(' ')}
+                      </span>
+                    </div>
+                  ) : post.mediaType === 'video' ? (
                     <video
                       src={post.mediaUrl}
                       muted

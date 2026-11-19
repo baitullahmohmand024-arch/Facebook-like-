@@ -248,48 +248,56 @@ export function PostCard({
         </div>
       </div>
 
-      {/* Media Frame */}
-      <div className="relative bg-[#0A0A0C] border-y border-white/[0.06]">
-        {mediaError ? (
-          <div className={`${aspectClass} w-full flex flex-col items-center justify-center gap-2 text-[#71717A] px-6 text-center`}>
-            <ImageOff className="w-8 h-8 opacity-60" />
-            <p className="text-xs">Media unavailable</p>
-          </div>
-        ) : post.mediaType === 'video' ? (
-          <div className={`relative ${aspectClass} w-full bg-black flex items-center justify-center`}>
-            <video
-              src={post.mediaUrl}
-              poster={post.thumbnailUrl || undefined}
-              controls
-              playsInline
-              muted={muted}
-              preload={post.thumbnailUrl ? 'none' : 'metadata'}
-              onError={() => setMediaError(true)}
-              className="w-full h-full object-contain"
-            />
-            <button
-              type="button"
-              onClick={() => setMuted((m) => !m)}
-              aria-label={muted ? 'Unmute video' : 'Mute video'}
-              className="absolute top-3 right-3 p-2 rounded-full bg-black/60 backdrop-blur-md text-[#F8F9FA] hover:bg-black/80 transition-colors"
-            >
-              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            </button>
-          </div>
-        ) : (
-          <div className={`${aspectClass} w-full overflow-hidden`}>
-            <img
-              src={post.mediaUrl}
-              alt={post.caption || `Post by ${post.authorName}`}
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              onError={() => setMediaError(true)}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        )}
-      </div>
+      {/* Media Frame or Text-Only Editorial Surface */}
+      {post.mediaType === 'text' ? (
+        <div className="px-5 py-6 bg-[#0A0A0C]/70 border-y border-white/[0.06]">
+          <p className="text-[17px] sm:text-[18px] text-[#F8F9FA] leading-relaxed whitespace-pre-wrap break-words font-normal">
+            {post.caption}
+          </p>
+        </div>
+      ) : (
+        <div className="relative bg-[#0A0A0C] border-y border-white/[0.06]">
+          {mediaError ? (
+            <div className={`${aspectClass} w-full flex flex-col items-center justify-center gap-2 text-[#71717A] px-6 text-center`}>
+              <ImageOff className="w-8 h-8 opacity-60" />
+              <p className="text-xs">Media unavailable</p>
+            </div>
+          ) : post.mediaType === 'video' ? (
+            <div className={`relative ${aspectClass} w-full bg-black flex items-center justify-center`}>
+              <video
+                src={post.mediaUrl}
+                poster={post.thumbnailUrl || undefined}
+                controls
+                playsInline
+                muted={muted}
+                preload={post.thumbnailUrl ? 'none' : 'metadata'}
+                onError={() => setMediaError(true)}
+                className="w-full h-full object-contain"
+              />
+              <button
+                type="button"
+                onClick={() => setMuted((m) => !m)}
+                aria-label={muted ? 'Unmute video' : 'Mute video'}
+                className="absolute top-3 right-3 p-2 rounded-full bg-black/60 backdrop-blur-md text-[#F8F9FA] hover:bg-black/80 transition-colors"
+              >
+                {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+            </div>
+          ) : (
+            <div className={`${aspectClass} w-full overflow-hidden`}>
+              <img
+                src={post.mediaUrl}
+                alt={post.caption || `Post by ${post.authorName}`}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                onError={() => setMediaError(true)}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Actions Bar */}
       <div className="px-5 pt-3.5 pb-4">
@@ -348,9 +356,9 @@ export function PostCard({
         </div>
 
         {/* Caption & Unboxed Hashtags */}
-        {(post.caption || post.hashtags.length > 0) && (
+        {((post.mediaType !== 'text' && post.caption) || post.hashtags.length > 0) && (
           <div className="mt-3 space-y-2">
-            {post.caption && (
+            {post.mediaType !== 'text' && post.caption && (
               <p className="text-[15px] text-[#F8F9FA]/95 leading-relaxed whitespace-pre-wrap break-words">
                 <button
                   type="button"

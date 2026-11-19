@@ -63,8 +63,8 @@ service cloud.firestore {
       && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 64
       && data.bio is string && data.bio.size() <= 240
       && data.hostel is string && data.hostel.size() <= 80
-      && data.avatarUrl is string && data.avatarUrl.size() <= 1024
-      && data.coverUrl is string && data.coverUrl.size() <= 1024
+      && data.avatarUrl is string && data.avatarUrl.size() <= 32768
+      && data.coverUrl is string && data.coverUrl.size() <= 250000
       && data.followersCount is int && data.followersCount >= 0
       && data.followingCount is int && data.followingCount >= 0
       && data.postsCount is int && data.postsCount >= 0
@@ -116,12 +116,19 @@ service cloud.firestore {
       && isValidId(data.authorId)
       && data.authorUsername is string && data.authorUsername.size() >= 3 && data.authorUsername.size() <= 24 && data.authorUsername.matches('^[a-zA-Z0-9_]+$')
       && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 64
-      && data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 1024
-      && data.mediaUrl is string && data.mediaUrl.size() >= 1 && data.mediaUrl.size() <= 2048
-      && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 2048))
-      && data.mediaType in ['image', 'video']
+      && data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 32768
+      && data.mediaUrl is string && data.mediaUrl.size() <= 500000
+      && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 100000))
+      && data.mediaType in ['image', 'video', 'text']
       && data.aspectRatio in ['square', 'landscape', 'portrait', 'vertical']
       && data.caption is string && data.caption.size() <= 1000
+      && (
+        (data.mediaType == 'text' && data.mediaUrl.size() == 0 && data.caption.size() >= 1) ||
+        (data.mediaType in ['image', 'video'] && data.mediaUrl.size() >= 1 && (
+          data.mediaUrl.matches('^https://.*') ||
+          data.mediaUrl.matches('^data:image/(webp|jpeg|png|gif);base64,.*')
+        ))
+      )
       && data.hashtags is list && data.hashtags.size() <= 10
       && (data.hashtags.size() == 0 || data.hashtags[0] is string)
       && data.visibility == 'public'
@@ -146,7 +153,7 @@ service cloud.firestore {
       && isValidId(data.authorId)
       && data.authorUsername is string && data.authorUsername.size() >= 3 && data.authorUsername.size() <= 24 && data.authorUsername.matches('^[a-zA-Z0-9_]+$')
       && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 64
-      && data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 1024
+      && data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 32768
       && data.text is string && data.text.size() >= 1 && data.text.size() <= 500
       && data.isPublic is bool
       && data.createdAt is timestamp;
@@ -194,7 +201,7 @@ service cloud.firestore {
       && isValidId(data.actorId)
       && data.actorUsername is string && data.actorUsername.size() <= 24
       && data.actorName is string && data.actorName.size() <= 64
-      && data.actorAvatarUrl is string && data.actorAvatarUrl.size() <= 1024
+      && data.actorAvatarUrl is string && data.actorAvatarUrl.size() <= 32768
       && data.type in ['like', 'comment', 'follow', 'mention', 'system']
       && data.postId is string && data.postId.size() <= 128
       && data.message is string && data.message.size() >= 1 && data.message.size() <= 240
@@ -227,10 +234,10 @@ service cloud.firestore {
       && data.participantBId in data.participantIds
       && data.participantAUsername is string && data.participantAUsername.size() <= 24
       && data.participantAName is string && data.participantAName.size() <= 64
-      && data.participantAAvatar is string && data.participantAAvatar.size() <= 1024
+      && data.participantAAvatar is string && data.participantAAvatar.size() <= 32768
       && data.participantBUsername is string && data.participantBUsername.size() <= 24
       && data.participantBName is string && data.participantBName.size() <= 64
-      && data.participantBAvatar is string && data.participantBAvatar.size() <= 1024
+      && data.participantBAvatar is string && data.participantBAvatar.size() <= 32768
       && data.lastMessageText is string && data.lastMessageText.size() <= 500
       && data.lastMessageSenderId is string && data.lastMessageSenderId.size() <= 128
       && data.unreadByA is int && data.unreadByA >= 0

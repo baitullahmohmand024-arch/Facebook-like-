@@ -13,7 +13,7 @@ export type AppView =
   | 'settings'
   | 'admin';
 
-export type MediaType = 'image' | 'video';
+export type MediaType = 'image' | 'video' | 'text';
 export type AspectRatioType = 'square' | 'landscape' | 'portrait' | 'vertical';
 export type FeedTab = 'for-you' | 'following' | 'latest';
 

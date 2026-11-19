@@ -57,7 +57,8 @@ export interface PreparedMedia {
   previewUrl: string;
   thumbnailFile?: File;
   thumbnailPreviewUrl?: string;
-  mediaType: MediaType;
+  directDataUrl?: string;
+  mediaType: 'image' | 'video';
   suggestedAspectRatio: AspectRatioType;
   originalSize: number;
   optimizedSize: number;
@@ -83,7 +84,7 @@ export function inferMimeType(file: File): string {
 export function validateMediaFile(
   file: File,
   maxSizeMB: number
-): { valid: boolean; mediaType?: MediaType; mimeType?: string; error?: string } {
+): { valid: boolean; mediaType?: 'image' | 'video'; mimeType?: string; error?: string } {
   const mimeType = inferMimeType(file);
   const isImage = ALLOWED_IMAGE_TYPES.includes(mimeType);
   const isVideo = ALLOWED_VIDEO_TYPES.includes(mimeType);
@@ -227,51 +228,248 @@ function canvasToBlobAsync(
   });
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Could not encode image for direct upload.'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Could not read compressed image data.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+type UploadFolder = 'posts' | 'avatars' | 'covers' | 'thumbnails';
+
+function getInlineBudgetForFolder(folder: UploadFolder): {
+  maxBytes: number;
+  maxDimension: number;
+  maxChars: number;
+} {
+  if (folder === 'avatars') return { maxBytes: 18 * 1024, maxDimension: 220, maxChars: 31_500 };
+  if (folder === 'thumbnails') return { maxBytes: 55 * 1024, maxDimension: 480, maxChars: 95_000 };
+  if (folder === 'covers') return { maxBytes: 140 * 1024, maxDimension: 1200, maxChars: 235_000 };
+  return { maxBytes: 220 * 1024, maxDimension: 1280, maxChars: 460_000 };
+}
+
+async function encodeCanvasUnderBudget(
+  sourceCanvas: HTMLCanvasElement,
+  targetMime: string,
+  initialQuality: number,
+  maxBytes: number,
+  initialBlob?: Blob | null
+): Promise<Blob | null> {
+  if (initialBlob && initialBlob.size <= maxBytes) {
+    return initialBlob;
+  }
+
+  let workingCanvas = sourceCanvas;
+  let bestBlob: Blob | null = initialBlob ?? null;
+
+  const qualitySteps = [
+    Math.min(0.74, initialQuality),
+    0.62,
+  ];
+
+  for (let i = 0; i < qualitySteps.length; i++) {
+    const q = qualitySteps[i];
+    // Downscale by 0.72x on the second pass if still over budget — draws from already-resized canvas (very fast)
+    if (i > 0 && Math.max(workingCanvas.width, workingCanvas.height) > 640) {
+      const nextCanvas = document.createElement('canvas');
+      nextCanvas.width = Math.max(1, Math.round(workingCanvas.width * 0.72));
+      nextCanvas.height = Math.max(1, Math.round(workingCanvas.height * 0.72));
+      const nextCtx = nextCanvas.getContext('2d');
+      if (nextCtx) {
+        nextCtx.imageSmoothingEnabled = true;
+        nextCtx.imageSmoothingQuality = 'medium';
+        nextCtx.drawImage(workingCanvas, 0, 0, nextCanvas.width, nextCanvas.height);
+        if (workingCanvas !== sourceCanvas) {
+          workingCanvas.width = 0;
+          workingCanvas.height = 0;
+        }
+        workingCanvas = nextCanvas;
+      }
+    }
+
+    const blob = await canvasToBlobAsync(workingCanvas, targetMime, q);
+    if (blob) {
+      bestBlob = blob;
+      if (blob.size <= maxBytes) break;
+    }
+  }
+
+  if (bestBlob && bestBlob.size > maxBytes && Math.max(workingCanvas.width, workingCanvas.height) > 480) {
+    const finalCanvas = document.createElement('canvas');
+    const scale = 480 / Math.max(workingCanvas.width, workingCanvas.height);
+    finalCanvas.width = Math.max(1, Math.round(workingCanvas.width * scale));
+    finalCanvas.height = Math.max(1, Math.round(workingCanvas.height * scale));
+    const finalCtx = finalCanvas.getContext('2d');
+    if (finalCtx) {
+      finalCtx.drawImage(workingCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
+      const smallBlob = await canvasToBlobAsync(finalCanvas, targetMime, 0.56);
+      finalCanvas.width = 0;
+      finalCanvas.height = 0;
+      if (smallBlob) bestBlob = smallBlob;
+    }
+  }
+
+  if (workingCanvas !== sourceCanvas) {
+    workingCanvas.width = 0;
+    workingCanvas.height = 0;
+  }
+
+  return bestBlob;
+}
+
+async function encodeImageUnderByteBudget(
+  file: File,
+  maxBytes: number,
+  startMaxDimension: number
+): Promise<{ file: File; dataUrl: string }> {
+  const mimeType = inferMimeType(file) || 'image/jpeg';
+
+  if (
+    file.size <= maxBytes &&
+    (mimeType === 'image/webp' || mimeType === 'image/jpeg' || mimeType === 'image/gif' || mimeType === 'image/png')
+  ) {
+    const dataUrl = await blobToDataUrl(file);
+    if (dataUrl.length <= Math.ceil(maxBytes * 1.45)) {
+      return { file, dataUrl };
+    }
+  }
+
+  const [source, canWebP] = await Promise.all([
+    decodeImageSource(file),
+    supportsWebPEncoding(),
+  ]);
+
+  try {
+    const targetMime = canWebP ? 'image/webp' : 'image/jpeg';
+    const targetExt = canWebP ? 'webp' : 'jpg';
+    const scale =
+      Math.max(source.width, source.height) > startMaxDimension
+        ? startMaxDimension / Math.max(source.width, source.height)
+        : 1;
+    const targetW = Math.max(1, Math.round(source.width * scale));
+    const targetH = Math.max(1, Math.round(source.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Could not initialize image canvas.');
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'medium';
+    source.drawToCanvas(ctx, targetW, targetH);
+
+    const firstBlob = await canvasToBlobAsync(canvas, targetMime, 0.78);
+    const bestBlob = await encodeCanvasUnderBudget(canvas, targetMime, 0.78, maxBytes, firstBlob);
+    canvas.width = 0;
+    canvas.height = 0;
+
+    if (!bestBlob) {
+      throw new Error('Could not optimize this image for direct publishing.');
+    }
+
+    const optimizedFile = new File([bestBlob], replaceFileExtension(file.name, targetExt), {
+      type: targetMime,
+      lastModified: Date.now(),
+    });
+    const dataUrl = await blobToDataUrl(optimizedFile);
+    return { file: optimizedFile, dataUrl };
+  } finally {
+    source.cleanup();
+  }
+}
+
 export async function prepareImageForUpload(
   file: File,
   options: {
     maxDimension?: number;
     quality?: number;
     skipReencodeMaxBytes?: number;
+    folder?: UploadFolder;
+    precomputeDirectDataUrl?: boolean;
   } = {}
 ): Promise<PreparedMedia> {
   const startedAt = performance.now();
-  const maxDimension = options.maxDimension ?? 1600;
-  const quality = options.quality ?? 0.82;
-  const skipReencodeMaxBytes = options.skipReencodeMaxBytes ?? 100 * 1024;
+  const folder = options.folder ?? 'posts';
+  const budget = getInlineBudgetForFolder(folder);
+  const maxDimension = options.maxDimension ?? budget.maxDimension;
+  const quality = options.quality ?? 0.78;
+  const skipReencodeMaxBytes = options.skipReencodeMaxBytes ?? 90 * 1024;
   const mimeType = inferMimeType(file) || 'image/jpeg';
   const fingerprint = buildFileFingerprint(file);
 
-  // Preserve animated GIFs without re-encoding
+  // Kick off bucket probe + WebP support check immediately in parallel with decoding
+  const bucketPromise = checkStorageBucketAvailable();
+  const webpPromise = supportsWebPEncoding();
+
+  // Preserve animated GIFs without re-encoding when within budget
   if (mimeType === 'image/gif') {
-    return {
-      uploadFile: file,
-      previewUrl: URL.createObjectURL(file),
-      mediaType: 'image',
-      suggestedAspectRatio: 'square',
-      originalSize: file.size,
-      optimizedSize: file.size,
-      width: 0,
-      height: 0,
-      formatLabel: 'GIF',
-      processingMs: Math.round(performance.now() - startedAt),
-      wasCompressed: false,
-      fingerprint,
-    };
+    const bucketAvailable = await bucketPromise;
+    let directDataUrl: string | undefined;
+    if ((!bucketAvailable || options.precomputeDirectDataUrl) && file.size <= budget.maxBytes) {
+      const candidateUrl = await blobToDataUrl(file);
+      if (candidateUrl.length <= budget.maxChars) {
+        directDataUrl = candidateUrl;
+      }
+    }
+    if (bucketAvailable || directDataUrl) {
+      return {
+        uploadFile: file,
+        previewUrl: URL.createObjectURL(file),
+        directDataUrl,
+        mediaType: 'image',
+        suggestedAspectRatio: 'square',
+        originalSize: file.size,
+        optimizedSize: file.size,
+        width: 0,
+        height: 0,
+        formatLabel: 'GIF',
+        processingMs: Math.round(performance.now() - startedAt),
+        wasCompressed: false,
+        fingerprint,
+      };
+    }
   }
 
   let source: Awaited<ReturnType<typeof decodeImageSource>> | null = null;
   try {
-    source = await decodeImageSource(file);
+    const [decoded, canWebP, bucketAvailable] = await Promise.all([
+      decodeImageSource(file),
+      webpPromise,
+      bucketPromise,
+    ]);
+    source = decoded;
     const { width, height } = source;
     const suggested = suggestAspectRatio(width, height, 'image');
     const needsResize = Math.max(width, height) > maxDimension;
+    const needDirect = !bucketAvailable || Boolean(options.precomputeDirectDataUrl);
 
-    // Skip unnecessary re-encoding when already small and within dimensions
-    if (!needsResize && file.size <= skipReencodeMaxBytes && (mimeType === 'image/webp' || mimeType === 'image/jpeg')) {
+    // Fast path: already small WebP/JPEG within dimensions
+    if (
+      !needsResize &&
+      file.size <= (needDirect ? Math.min(skipReencodeMaxBytes, budget.maxBytes) : skipReencodeMaxBytes) &&
+      (mimeType === 'image/webp' || mimeType === 'image/jpeg')
+    ) {
+      let directDataUrl: string | undefined;
+      if (needDirect) {
+        const candidateUrl = await blobToDataUrl(file);
+        if (candidateUrl.length <= budget.maxChars) {
+          directDataUrl = candidateUrl;
+        }
+      }
       return {
         uploadFile: file,
         previewUrl: URL.createObjectURL(file),
+        directDataUrl,
         mediaType: 'image',
         suggestedAspectRatio: suggested,
         originalSize: file.size,
@@ -311,24 +509,38 @@ export async function prepareImageForUpload(
     }
 
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = 'medium';
     source.drawToCanvas(ctx, targetW, targetH);
 
-    const canWebP = await supportsWebPEncoding();
     const targetMime = canWebP ? 'image/webp' : 'image/jpeg';
     const targetExt = canWebP ? 'webp' : 'jpg';
+    const initialQuality = canWebP ? quality : Math.min(0.84, quality + 0.03);
 
-    const blob = await canvasToBlobAsync(canvas, targetMime, canWebP ? quality : Math.min(0.86, quality + 0.03));
+    const firstBlob = await canvasToBlobAsync(canvas, targetMime, initialQuality);
+    let finalBlob = firstBlob;
+
+    // Enforce direct budget in the same single pass when Storage is unavailable so Publish needs zero extra compression!
+    if (needDirect && (!firstBlob || firstBlob.size > budget.maxBytes)) {
+      finalBlob = await encodeCanvasUnderBudget(canvas, targetMime, initialQuality, budget.maxBytes, firstBlob);
+    }
+
     canvas.width = 0;
     canvas.height = 0;
 
-    // Avoid inflating already-efficient files if no resize was needed
-    if (!blob || (!needsResize && blob.size >= file.size)) {
+    if (!finalBlob || (!needsResize && !needDirect && finalBlob.size >= file.size)) {
       const normalizedOriginal =
         file.type === mimeType ? file : new File([file], file.name, { type: mimeType, lastModified: file.lastModified });
+      let directDataUrl: string | undefined;
+      if (needDirect && normalizedOriginal.size <= budget.maxBytes) {
+        const candidateUrl = await blobToDataUrl(normalizedOriginal);
+        if (candidateUrl.length <= budget.maxChars) {
+          directDataUrl = candidateUrl;
+        }
+      }
       return {
         uploadFile: normalizedOriginal,
         previewUrl: URL.createObjectURL(normalizedOriginal),
+        directDataUrl,
         mediaType: 'image',
         suggestedAspectRatio: suggested,
         originalSize: file.size,
@@ -342,14 +554,23 @@ export async function prepareImageForUpload(
       };
     }
 
-    const optimizedFile = new File([blob], replaceFileExtension(file.name, targetExt), {
+    const optimizedFile = new File([finalBlob], replaceFileExtension(file.name, targetExt), {
       type: targetMime,
       lastModified: Date.now(),
     });
 
+    let directDataUrl: string | undefined;
+    if (needDirect && optimizedFile.size <= budget.maxBytes) {
+      const candidateUrl = await blobToDataUrl(optimizedFile);
+      if (candidateUrl.length <= budget.maxChars) {
+        directDataUrl = candidateUrl;
+      }
+    }
+
     return {
       uploadFile: optimizedFile,
       previewUrl: URL.createObjectURL(optimizedFile),
+      directDataUrl,
       mediaType: 'image',
       suggestedAspectRatio: suggested,
       originalSize: file.size,
@@ -358,7 +579,7 @@ export async function prepareImageForUpload(
       height: targetH,
       formatLabel: canWebP ? 'WebP' : 'JPEG',
       processingMs: Math.round(performance.now() - startedAt),
-      wasCompressed: true,
+      wasCompressed: optimizedFile.size < file.size || mimeType !== targetMime,
       fingerprint,
     };
   } finally {
@@ -497,13 +718,95 @@ export async function prepareVideoForUpload(file: File): Promise<PreparedMedia> 
 
 export async function prepareMediaForUpload(
   file: File,
-  options: { maxDimension?: number; quality?: number } = {}
+  options: {
+    maxDimension?: number;
+    quality?: number;
+    folder?: UploadFolder;
+    precomputeDirectDataUrl?: boolean;
+  } = {}
 ): Promise<PreparedMedia> {
   const mimeType = inferMimeType(file);
   if (ALLOWED_VIDEO_TYPES.includes(mimeType)) {
     return prepareVideoForUpload(file);
   }
   return prepareImageForUpload(file, options);
+}
+
+const BUCKET_CACHE_KEY = 'hostelverse_storage_bucket_v1';
+let cachedBucketCheck: { available: boolean; checkedAt: number } | null = null;
+let inFlightBucketProbe: Promise<boolean> | null = null;
+
+function readSessionBucketCache(): { available: boolean; checkedAt: number } | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(BUCKET_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { available?: boolean; checkedAt?: number };
+    if (typeof parsed.available === 'boolean' && typeof parsed.checkedAt === 'number') {
+      return { available: parsed.available, checkedAt: parsed.checkedAt };
+    }
+  } catch {
+    // ignore storage access issues
+  }
+  return null;
+}
+
+function writeSessionBucketCache(available: boolean, checkedAt: number): void {
+  cachedBucketCheck = { available, checkedAt };
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(BUCKET_CACHE_KEY, JSON.stringify(cachedBucketCheck));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Fast cached 1.0s probe to verify whether Firebase Cloud Storage bucket is initialized.
+ * Deduplicated and cached in sessionStorage so repeat uploads start in 0ms.
+ */
+export async function checkStorageBucketAvailable(forceRefresh = false): Promise<boolean> {
+  const now = Date.now();
+  const cached = cachedBucketCheck || readSessionBucketCache();
+  if (!forceRefresh && cached) {
+    cachedBucketCheck = cached;
+    const ttl = cached.available ? 15 * 60_000 : 10 * 60_000;
+    if (now - cached.checkedAt < ttl) {
+      return cached.available;
+    }
+  }
+
+  if (inFlightBucketProbe && !forceRefresh) {
+    return inFlightBucketProbe;
+  }
+
+  const bucket = storage.app.options.storageBucket;
+  if (!bucket || typeof fetch !== 'function') {
+    writeSessionBucketCache(false, now);
+    return false;
+  }
+
+  inFlightBucketProbe = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1000);
+    try {
+      const res = await fetch(
+        `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o?maxResults=1`,
+        { method: 'GET', signal: controller.signal }
+      );
+      const available = res.status !== 404;
+      writeSessionBucketCache(available, Date.now());
+      return available;
+    } catch {
+      return true;
+    } finally {
+      clearTimeout(timeout);
+      inFlightBucketProbe = null;
+    }
+  })();
+
+  return inFlightBucketProbe;
 }
 
 function mapStorageError(error: unknown): { message: string; retryable: boolean } {
@@ -523,7 +826,7 @@ function mapStorageError(error: unknown): { message: string; retryable: boolean 
   if (code === 'storage/bucket-not-found' || code === 'storage/project-not-found') {
     return {
       message:
-        'Firebase Storage bucket was not found. Enable Firebase Storage in Firebase Console before uploading media.',
+        'Firebase Storage bucket is not initialized on this project yet. Enable Storage in Firebase Console.',
       retryable: false,
     };
   }
@@ -536,14 +839,14 @@ function mapStorageError(error: unknown): { message: string; retryable: boolean 
   if (code === 'storage/retry-limit-exceeded') {
     return {
       message:
-        'Upload timed out while connecting to Firebase Storage. Check your connection or verify Firebase Storage & CORS configuration, then retry.',
+        'Upload timed out while connecting to Firebase Storage. Check your connection or verify Storage setup, then retry.',
       retryable: true,
     };
   }
   if (code === 'storage/unknown' || msg.toLowerCase().includes('network')) {
     return {
       message:
-        'Network error interrupted the upload to Firebase Storage. Your caption and file are saved—tap Retry when ready.',
+        'Network error interrupted the upload. Your caption and file are saved—tap Retry when ready.',
       retryable: true,
     };
   }
@@ -556,8 +859,9 @@ function mapStorageError(error: unknown): { message: string; retryable: boolean 
 
 export function startResumableUpload(options: {
   file: File;
-  folder: 'posts' | 'avatars' | 'covers' | 'thumbnails';
+  folder: UploadFolder;
   userId: string;
+  precomputedDataUrl?: string;
   onProgress?: (telemetry: UploadTelemetry) => void;
   maxAutoRetries?: number;
   stallTimeoutMs?: number;
@@ -566,9 +870,10 @@ export function startResumableUpload(options: {
     file,
     folder,
     userId,
+    precomputedDataUrl,
     onProgress,
-    maxAutoRetries = 2,
-    stallTimeoutMs = 20_000,
+    maxAutoRetries = 1,
+    stallTimeoutMs = 15_000,
   } = options;
 
   let cancelled = false;
@@ -599,14 +904,57 @@ export function startResumableUpload(options: {
       throw new Error('Authentication session expired. Please sign in again.');
     }
 
-    // Ensure auth token is fresh before opening Storage session
-    await auth.currentUser.getIdToken();
-
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const storagePath = `${folder}/${userId}/${uniqueId}_${safeName}`;
     const contentType = inferMimeType(file) || 'application/octet-stream';
     const overallStartedAt = performance.now();
+
+    const directInlineFallback = async (): Promise<UploadResult> => {
+      if (!contentType.startsWith('image/')) {
+        throw new Error(
+          'Video uploads require Firebase Storage to be enabled in Firebase Console -> Storage (Get Started). Photographs and Text-Only posts publish directly right now.'
+        );
+      }
+
+      const budget = getInlineBudgetForFolder(folder);
+      let dataUrl = precomputedDataUrl;
+      let bytesTransferred = file.size;
+
+      if (!dataUrl || dataUrl.length > budget.maxChars) {
+        const encoded = await encodeImageUnderByteBudget(file, budget.maxBytes, budget.maxDimension);
+        dataUrl = encoded.dataUrl;
+        bytesTransferred = encoded.file.size;
+      }
+
+      if (cancelled) throw new UploadCancelledError();
+      const elapsedMs = Math.max(1, Math.round(performance.now() - overallStartedAt));
+      onProgress?.({
+        phase: 'completed',
+        bytesTransferred,
+        totalBytes: bytesTransferred,
+        percent: 100,
+        speedBytesPerSec: Math.round(bytesTransferred / Math.max(0.02, elapsedMs / 1000)),
+        etaSeconds: 0,
+        elapsedMs,
+        attempt: 1,
+      });
+      return {
+        downloadUrl: dataUrl,
+        storagePath: `direct/${storagePath}`,
+        bytesTransferred,
+        elapsedMs,
+      };
+    };
+
+    const [, bucketAvailable] = await Promise.all([
+      auth.currentUser.getIdToken(),
+      checkStorageBucketAvailable(),
+    ]);
+    if (cancelled) throw new UploadCancelledError();
+    if (!bucketAvailable) {
+      return directInlineFallback();
+    }
 
     const runAttempt = (attempt: number): Promise<UploadResult> => {
       return new Promise((resolve, reject) => {
@@ -624,6 +972,7 @@ export function startResumableUpload(options: {
 
         let lastTransferred = 0;
         let lastProgressAt = performance.now();
+        let fallbackTriggered = false;
         const samples: { t: number; bytes: number }[] = [{ t: lastProgressAt, bytes: 0 }];
 
         const emit = (phase: UploadPhase, transferred: number, total: number) => {
@@ -632,7 +981,6 @@ export function startResumableUpload(options: {
           const safeTotal = Math.max(total, file.size, 1);
           const percent = Math.min(100, Math.max(0, Math.round((transferred / safeTotal) * 100)));
 
-          // Rolling speed window (up to 3s)
           const windowCutoff = now - 3000;
           while (samples.length > 1 && samples[0].t < windowCutoff) {
             samples.shift();
@@ -688,12 +1036,26 @@ export function startResumableUpload(options: {
         }
 
         const stallInterval = setInterval(() => {
-          if (cancelled) return;
+          if (cancelled || fallbackTriggered) return;
           if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-          if (performance.now() - lastProgressAt >= stallTimeoutMs) {
+          const idleMs = performance.now() - lastProgressAt;
+          // If an image sits at 0 bytes for >2.5s, Storage handshake is blocked/stalled: switch to direct publish
+          if (lastTransferred === 0 && idleMs >= 2500 && contentType.startsWith('image/')) {
+            fallbackTriggered = true;
+            cleanupListeners();
+            try {
+              uploadTask.cancel();
+            } catch {
+              // ignore
+            }
+            writeSessionBucketCache(false, Date.now());
+            directInlineFallback().then(resolve, reject);
+            return;
+          }
+          if (idleMs >= stallTimeoutMs) {
             emit('stalled', lastTransferred, file.size);
           }
-        }, 2000);
+        }, 800);
 
         const cleanupListeners = () => {
           clearInterval(stallInterval);
@@ -706,7 +1068,7 @@ export function startResumableUpload(options: {
         uploadTask.on(
           'state_changed',
           (snapshot) => {
-            if (cancelled) return;
+            if (cancelled || fallbackTriggered) return;
             const now = performance.now();
             if (snapshot.bytesTransferred > lastTransferred) {
               lastTransferred = snapshot.bytesTransferred;
@@ -718,15 +1080,26 @@ export function startResumableUpload(options: {
             emit(phase, snapshot.bytesTransferred, snapshot.totalBytes || file.size);
           },
           (error) => {
+            if (fallbackTriggered) return;
             cleanupListeners();
             activeTask = null;
             if (cancelled || (error as { code?: string })?.code === 'storage/canceled') {
               reject(new UploadCancelledError());
               return;
             }
+            const code = (error as { code?: string })?.code || '';
+            if (
+              contentType.startsWith('image/') &&
+              lastTransferred === 0 &&
+              (code === 'storage/bucket-not-found' || code === 'storage/unknown' || code === 'storage/retry-limit-exceeded')
+            ) {
+              writeSessionBucketCache(false, Date.now());
+              directInlineFallback().then(resolve, reject);
+              return;
+            }
             const mapped = mapStorageError(error);
             if (mapped.retryable && attempt <= maxAutoRetries) {
-              const backoffMs = attempt * 1200;
+              const backoffMs = attempt * 1000;
               emit('retrying', lastTransferred, file.size);
               retryTimer = setTimeout(() => {
                 runAttempt(attempt + 1).then(resolve, reject);
@@ -736,6 +1109,7 @@ export function startResumableUpload(options: {
             reject(new Error(mapped.message));
           },
           async () => {
+            if (fallbackTriggered) return;
             cleanupListeners();
             activeTask = null;
             if (cancelled) {
@@ -773,18 +1147,23 @@ export async function uploadMediaFile(
   onProgress?: (percent: number) => void
 ): Promise<string> {
   let fileToUpload = file;
+  let precomputedDataUrl: string | undefined;
   const mimeType = inferMimeType(file);
   if (ALLOWED_IMAGE_TYPES.includes(mimeType)) {
-    const maxDim = folder === 'avatars' ? 512 : 1600;
-    const prepared = await prepareImageForUpload(file, { maxDimension: maxDim, quality: 0.82 });
+    const prepared = await prepareImageForUpload(file, {
+      folder,
+      quality: 0.78,
+    });
     URL.revokeObjectURL(prepared.previewUrl);
     fileToUpload = prepared.uploadFile;
+    precomputedDataUrl = prepared.directDataUrl;
   }
 
   const { promise } = startResumableUpload({
     file: fileToUpload,
     folder,
     userId,
+    precomputedDataUrl,
     onProgress: (telemetry) => {
       onProgress?.(telemetry.percent);
     },
