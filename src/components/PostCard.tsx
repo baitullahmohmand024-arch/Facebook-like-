@@ -34,6 +34,7 @@ interface PostCardProps {
   onOpenProfile: (userId: string) => void;
   onSearchHashtag: (tag: string) => void;
   onRequireAuth?: () => void;
+  variant?: 'default' | 'feed';
 }
 
 export function PostCard({
@@ -48,6 +49,7 @@ export function PostCard({
   onOpenProfile,
   onSearchHashtag,
   onRequireAuth,
+  variant = 'default',
 }: PostCardProps) {
   const { showToast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -172,6 +174,351 @@ export function PostCard({
       : post.aspectRatio === 'vertical'
       ? 'aspect-[9/16] max-h-[560px] mx-auto'
       : 'aspect-[4/3]';
+
+  if (variant === 'feed') {
+    return (
+      <article className="bg-[#111114] border border-[#F5C542]/25 hover:border-[#F5C542]/45 rounded-2xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.55)] transition-all duration-200">
+        {/* Post Author Header */}
+        <div className="px-4 sm:px-5 pt-4 pb-3 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => onOpenProfile(post.authorId)}
+            className="flex items-center gap-3 text-left group min-w-0"
+          >
+            <div className="rounded-full p-[1.5px] bg-gradient-to-tr from-[#D99B19]/70 via-[#F5C542]/80 to-[#F8D162]/60 shrink-0">
+              <Avatar src={post.authorAvatarUrl} name={post.authorName} size="md" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[15px] font-display font-semibold text-[#FFFFFF] group-hover:text-[#F5C542] transition-colors truncate">
+                {post.authorName}
+              </p>
+              <div className="flex items-center gap-1.5 text-xs text-[#A5A5AD] truncate">
+                <span className="truncate">@{post.authorUsername}</span>
+                <span aria-hidden="true">·</span>
+                <span className="shrink-0">{formatRelativeTime(post.createdAt)}</span>
+              </div>
+            </div>
+          </button>
+
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label="Post options"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-[#A5A5AD] hover:text-[#F5C542] hover:bg-[#19191D] transition-colors"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 mt-1.5 w-48 bg-[#19191D] rounded-xl py-1.5 shadow-2xl border border-[#F5C542]/25 z-20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    handleShare();
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-[#FFFFFF] hover:bg-white/[0.06] flex items-center gap-2.5"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-[#F5C542]" />
+                  Copy Post Link
+                </button>
+
+                {currentUser && currentUser.uid !== post.authorId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setReportOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-[#FFFFFF] hover:bg-white/[0.06] flex items-center gap-2.5"
+                  >
+                    <Flag className="w-3.5 h-3.5 text-[#F5C542]" />
+                    Report Post
+                  </button>
+                )}
+
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setConfirmDeleteOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-rose-400 hover:bg-rose-500/10 flex items-center gap-2.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Post
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Caption & Hashtags Above Media */}
+        {(post.caption || post.hashtags.length > 0) && (
+          <div className="px-4 sm:px-5 pb-3 space-y-2">
+            {post.caption && (
+              <p
+                className={`${
+                  post.mediaType === 'text' ? 'text-[16px] sm:text-[17px]' : 'text-[15px]'
+                } text-[#FFFFFF]/95 leading-relaxed whitespace-pre-wrap break-words`}
+              >
+                {post.caption}
+              </p>
+            )}
+            {post.hashtags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs sm:text-[13px] font-medium text-[#F5C542]">
+                {post.hashtags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => onSearchHashtag(tag)}
+                    className="hover:text-[#F8D162] hover:underline transition-colors"
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Attached Image or Video */}
+        {post.mediaType !== 'text' && (
+          <div className="px-4 sm:px-5 pb-3">
+            <div className="relative rounded-xl overflow-hidden bg-[#050505] border border-white/[0.08]">
+              {mediaError ? (
+                <div className={`${aspectClass} w-full flex flex-col items-center justify-center gap-2 text-[#A5A5AD] px-6 text-center`}>
+                  <ImageOff className="w-8 h-8 opacity-60 text-[#F5C542]" />
+                  <p className="text-xs">Media unavailable</p>
+                </div>
+              ) : post.mediaType === 'video' ? (
+                <div className={`relative ${aspectClass} w-full bg-black flex items-center justify-center`}>
+                  <video
+                    src={post.mediaUrl}
+                    poster={post.thumbnailUrl || undefined}
+                    controls
+                    playsInline
+                    muted={muted}
+                    preload={post.thumbnailUrl ? 'none' : 'metadata'}
+                    onError={() => setMediaError(true)}
+                    className="w-full h-full object-contain"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMuted((m) => !m)}
+                    aria-label={muted ? 'Unmute video' : 'Mute video'}
+                    className="absolute top-3 right-3 p-2 rounded-full bg-black/65 backdrop-blur-md text-[#F5C542] border border-[#F5C542]/30 hover:bg-black/85 transition-colors"
+                  >
+                    {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  </button>
+                </div>
+              ) : (
+                <div className={`${aspectClass} w-full overflow-hidden`}>
+                  <img
+                    src={post.mediaUrl}
+                    alt={post.caption || `Post by ${post.authorName}`}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    onError={() => setMediaError(true)}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Reaction Summary + Golden Actions Bar */}
+        <div className="px-4 sm:px-5 pb-3">
+          <div className="pb-2.5 border-b border-white/[0.08] flex items-center justify-between text-xs text-[#A5A5AD]">
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <Heart className="w-3.5 h-3.5 fill-[#F5C542] text-[#F5C542]" />
+              <span className="text-[#FFFFFF] font-medium">{formatCount(post.likesCount)}</span>
+              <span>{post.likesCount === 1 ? 'like' : 'likes'}</span>
+            </span>
+            <button
+              type="button"
+              onClick={handleToggleComments}
+              className="hover:text-[#F5C542] transition-colors tabular-nums"
+            >
+              {formatCount(localCommentsCount)} {localCommentsCount === 1 ? 'comment' : 'comments'}
+            </button>
+          </div>
+
+          <div className="pt-1.5 flex items-center justify-between gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (currentUser) {
+                  playSound(isLiked ? 'unlike' : 'like');
+                  void onToggleLike(post);
+                } else {
+                  onRequireAuth?.();
+                }
+              }}
+              className={`flex-1 min-h-[42px] px-2 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] whitespace-nowrap ${
+                isLiked
+                  ? 'text-[#F5C542] bg-[#F5C542]/12'
+                  : 'text-[#FFFFFF]/90 hover:text-[#F5C542] hover:bg-[#19191D]'
+              }`}
+              aria-label={isLiked ? 'Unlike post' : 'Like post'}
+            >
+              <Heart className={`w-4 h-4 text-[#F5C542] ${isLiked ? 'fill-[#F5C542]' : ''}`} />
+              <span>{isLiked ? 'Liked' : 'Like'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleComments}
+              className={`flex-1 min-h-[42px] px-2 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold transition-all active:scale-[0.98] whitespace-nowrap ${
+                commentsOpen
+                  ? 'text-[#F5C542] bg-[#19191D]'
+                  : 'text-[#FFFFFF]/90 hover:text-[#F5C542] hover:bg-[#19191D]'
+              }`}
+              aria-label="Toggle comments"
+            >
+              <MessageCircle className="w-4 h-4 text-[#F5C542]" />
+              <span>Comment</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleShare}
+              className="flex-1 min-h-[42px] px-2 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold text-[#FFFFFF]/90 hover:text-[#F5C542] hover:bg-[#19191D] transition-all active:scale-[0.98] whitespace-nowrap"
+              aria-label="Share post"
+            >
+              <Share2 className="w-4 h-4 text-[#F5C542]" />
+              <span>Share</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (currentUser) {
+                  playSound(isSaved ? 'unlike' : 'save');
+                  void onToggleSave(post);
+                } else {
+                  onRequireAuth?.();
+                }
+              }}
+              className={`min-h-[42px] min-w-[42px] px-2.5 rounded-xl flex items-center justify-center transition-all active:scale-[0.98] shrink-0 ${
+                isSaved
+                  ? 'text-[#F5C542] bg-[#F5C542]/12'
+                  : 'text-[#A5A5AD] hover:text-[#F5C542] hover:bg-[#19191D]'
+              }`}
+              aria-label={isSaved ? 'Remove from saved' : 'Save post'}
+            >
+              <Bookmark className={`w-4 h-4 text-[#F5C542] ${isSaved ? 'fill-[#F5C542]' : ''}`} />
+            </button>
+          </div>
+
+          {/* Comments Drawer */}
+          {commentsOpen && (
+            <div className="mt-3 pt-3.5 border-t border-white/[0.08] space-y-3">
+              {commentsLoading ? (
+                <p className="text-xs text-[#A5A5AD]">Loading comments...</p>
+              ) : comments.length === 0 ? (
+                <p className="text-xs text-[#A5A5AD]">No comments yet. Start the conversation.</p>
+              ) : (
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                  {comments.map((comment) => {
+                    const canRemoveComment = Boolean(
+                      currentUser &&
+                        (currentUser.uid === comment.authorId ||
+                          currentUser.uid === post.authorId ||
+                          isAdmin)
+                    );
+                    return (
+                      <div key={comment.id} className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <Avatar
+                            src={comment.authorAvatarUrl}
+                            name={comment.authorName}
+                            size="xs"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs text-[#FFFFFF] leading-relaxed break-words">
+                              <button
+                                type="button"
+                                onClick={() => onOpenProfile(comment.authorId)}
+                                className="font-semibold hover:text-[#F5C542] mr-1.5"
+                              >
+                                @{comment.authorUsername}
+                              </button>
+                              {comment.text}
+                            </p>
+                            <span className="text-[11px] text-[#A5A5AD]">
+                              {formatRelativeTime(comment.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+                        {canRemoveComment && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(comment)}
+                            aria-label="Delete comment"
+                            className="text-[#A5A5AD] hover:text-rose-400 p-1 rounded transition-colors shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <form onSubmit={handleCommentSubmit} className="flex items-center gap-2 pt-1">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  maxLength={500}
+                  placeholder={currentUser ? 'Add a thoughtful comment...' : 'Sign in to comment'}
+                  className="flex-1 rounded-xl bg-[#050505] border border-white/10 px-3.5 py-2 text-sm text-[#FFFFFF] placeholder:text-[#A5A5AD]/70 focus:outline-none focus:border-[#F5C542]"
+                />
+                <button
+                  type="submit"
+                  disabled={submittingComment || !commentText.trim()}
+                  aria-label="Send comment"
+                  className="min-h-[38px] min-w-[38px] px-3 rounded-xl gold-gradient-btn flex items-center justify-center disabled:opacity-40 transition-opacity"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+
+        <ConfirmDialog
+          open={confirmDeleteOpen}
+          title="Delete this post?"
+          description="This action permanently removes the post and its engagement from Hostel Friend."
+          confirmLabel="Delete Post"
+          destructive
+          loading={deleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmDeleteOpen(false)}
+        />
+
+        {currentUser && (
+          <ReportModal
+            open={reportOpen}
+            reporterId={currentUser.uid}
+            targetType="post"
+            targetId={post.id}
+            targetAuthorId={post.authorId}
+            targetLabel={`Post by @${post.authorUsername}`}
+            onClose={() => setReportOpen(false)}
+          />
+        )}
+      </article>
+    );
+  }
 
   return (
     <article className="bg-[#151519] border border-white/[0.08] hover:border-white/[0.14] rounded-2xl overflow-hidden transition-colors duration-200">

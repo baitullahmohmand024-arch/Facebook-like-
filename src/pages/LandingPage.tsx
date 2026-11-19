@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Compass, Film, Heart, Lock, MessageSquare, Sparkles } from 'lucide-react';
-import { Post, UserProfile } from '../types';
-import { fetchPostsPage } from '../services/postService';
-import { fetchDiscoverMembers } from '../services/userService';
-import { Avatar } from '../components/Avatar';
+import {
+  ArrowRight,
+  Building2,
+  Camera,
+  Compass,
+  GraduationCap,
+  MapPin,
+  Quote,
+  Settings,
+  User,
+  X,
+} from 'lucide-react';
 import { PWAInstallButton } from '../components/PWAInstallButton';
-import { formatCount, formatRelativeTime } from '../utils/formatters';
 
 interface LandingPageProps {
   onCreateAccount: () => void;
@@ -15,10 +21,46 @@ interface LandingPageProps {
   connectingGoogle?: boolean;
 }
 
-const HERO_IMG = '/src/assets/images/hero_hostel_rooftop_1794541690689.jpg';
-const LOUNGE_IMG = '/src/assets/images/showcase_common_room_1794541692315.jpg';
-const COURTYARD_IMG = '/src/assets/images/showcase_courtyard_night_1794541690152.jpg';
-const VERTICAL_IMG = '/src/assets/images/showcase_vertical_moment_1794541691304.jpg';
+interface GalleryPhoto {
+  id: string;
+  src: string;
+  alt: string;
+  caption: string;
+  tiltClass: string;
+}
+
+const HERO_ARCHITECTURE_IMG = '/images/icp-hero-campus.jpg';
+
+const COLLEGE_GALLERY_PHOTOS: GalleryPhoto[] = [
+  {
+    id: 'icp-clock-tower',
+    src: 'https://res.cloudinary.com/jnobnl9r/image/upload/v1795087575/images_1_gxj4ab.jpg',
+    alt: 'Islamia College Peshawar historic main clock tower building',
+    caption: 'Islamia College Peshawar — Historic Clock Tower',
+    tiltClass: '-rotate-3 sm:-rotate-6 translate-y-1',
+  },
+  {
+    id: 'icp-masjid',
+    src: 'https://res.cloudinary.com/jnobnl9r/image/upload/v1795087575/images_2_w4lp7z.jpg',
+    alt: 'Historic mosque at Islamia College Peshawar campus',
+    caption: 'Islamia College Peshawar — Campus Mosque',
+    tiltClass: 'rotate-2 sm:rotate-3 -translate-y-1',
+  },
+  {
+    id: 'icp-arch-courtyard',
+    src: 'https://res.cloudinary.com/jnobnl9r/image/upload/v1795087575/images_3_txsyn3.jpg',
+    alt: 'Hostel courtyard view through stone arch at Islamia College Peshawar',
+    caption: 'Islamia College Peshawar — Hostel Courtyard',
+    tiltClass: '-rotate-2 sm:-rotate-3 translate-y-1',
+  },
+  {
+    id: 'icp-panorama',
+    src: 'https://res.cloudinary.com/jnobnl9r/image/upload/v1795087575/download_cgiblb.jpg',
+    alt: 'Panoramic view of Islamia College Peshawar main campus building',
+    caption: 'Islamia College Peshawar — Campus Panorama',
+    tiltClass: 'rotate-3 sm:rotate-6',
+  },
+];
 
 export function LandingPage({
   onCreateAccount,
@@ -27,482 +69,533 @@ export function LandingPage({
   onConnectGoogle,
   connectingGoogle = false,
 }: LandingPageProps) {
-  const [recentPosts, setRecentPosts] = useState<Post[]>([]);
-  const [featuredMembers, setFeaturedMembers] = useState<UserProfile[]>([]);
-  const [loadingHighlights, setLoadingHighlights] = useState(true);
+  const [heroImgFailed, setHeroImgFailed] = useState(false);
+  const [failedGalleryIds, setFailedGalleryIds] = useState<Record<string, boolean>>({});
+  const [lightboxPhoto, setLightboxPhoto] = useState<GalleryPhoto | null>(null);
+  const [showDeveloperModal, setShowDeveloperModal] = useState(false);
+  const [devImgFailed, setDevImgFailed] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    Promise.all([
-      fetchPostsPage(null, 4).catch(() => ({ posts: [] as Post[] })),
-      fetchDiscoverMembers(6).catch(() => [] as UserProfile[]),
-    ]).then(([postRes, members]) => {
-      if (!mounted) return;
-      setRecentPosts(postRes.posts);
-      setFeaturedMembers(members);
-      setLoadingHighlights(false);
-    });
-    return () => {
-      mounted = false;
+    if (!showDeveloperModal && !lightboxPhoto) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowDeveloperModal(false);
+        setLightboxPhoto(null);
+      }
     };
-  }, []);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showDeveloperModal, lightboxPhoto]);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0C] text-[#F8F9FA]">
-      {/* 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-40 bg-[#0A0A0C]/85 backdrop-blur-xl border-b border-white/[0.08]">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 h-18 flex items-center justify-between gap-8">
-          <a
-            href="#top"
-            className="flex items-center gap-2.5 font-display font-bold tracking-tight text-lg text-[#F8F9FA] whitespace-nowrap shrink-0"
-          >
+    <div className="min-h-screen bg-[#050505] text-[#FFFFFF] overflow-x-clip">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-[#050505]/90 backdrop-blur-xl border-b border-white/[0.08]">
+        <div className="max-w-6xl mx-auto px-3.5 sm:px-6 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-4">
+          <a href="#top" className="flex items-center gap-2.5 sm:gap-3 min-w-0 shrink">
             <img
               src="/icons/icon-192.png"
               alt="Hostel Friend"
-              className="w-8 h-8 rounded-lg object-cover border border-white/15"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border border-white/15 shrink-0 shadow-md"
             />
-            <span>Hostel Friend</span>
+            <div className="min-w-0 leading-tight">
+              <p className="font-display font-extrabold tracking-tight text-base sm:text-xl whitespace-nowrap">
+                <span className="text-[#FFFFFF]">Hostel </span>
+                <span className="text-[#F5C542]">Friend</span>
+              </p>
+              <p className="text-[10px] sm:text-xs text-[#D0D0D0] tracking-wide truncate">
+                Connect • Share • Discover
+              </p>
+            </div>
           </a>
 
-          <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-[#A1A1AA]">
-            <a href="#story" className="hover:text-[#F8F9FA] transition-colors whitespace-nowrap shrink-0">
-              Story
-            </a>
-            <a href="#features" className="hover:text-[#F8F9FA] transition-colors whitespace-nowrap shrink-0">
-              Experience
-            </a>
-            <a href="#highlights" className="hover:text-[#F8F9FA] transition-colors whitespace-nowrap shrink-0">
-              Community
-            </a>
-            <a href="#safety" className="hover:text-[#F8F9FA] transition-colors whitespace-nowrap shrink-0">
-              Privacy
-            </a>
-          </nav>
-
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <PWAInstallButton variant="compact" />
             <button
               type="button"
               onClick={onCreateAccount}
-              className="gold-gradient-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0"
+              className="gold-gradient-btn px-3 sm:px-4.5 py-2 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-bold flex items-center gap-1.5 shadow-[0_4px_18px_rgba(245,197,66,0.25)] transition-all active:scale-[0.98] whitespace-nowrap shrink-0"
             >
-              Start Account Setup
+              <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span>Start Account Setup</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section id="top" className="relative overflow-hidden border-b border-white/[0.06]">
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-14 lg:py-24">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-stretch">
-            <div className="lg:col-span-6 flex flex-col justify-center">
-              <p className="text-xs font-medium tracking-[0.14em] uppercase text-[#00C8FF]">
-                Connect • Share • Discover
-              </p>
-              <h1
-                className="mt-4 font-display font-bold tracking-tight text-[#F8F9FA] leading-[1.06]"
-                style={{ fontSize: 'clamp(2.25rem, 4.4vw, 3.85rem)', textWrap: 'balance' }}
-              >
-                Your World. Your Memories. Your People.
-              </h1>
-              <p className="mt-5 text-base sm:text-lg text-[#A1A1AA] leading-relaxed max-w-xl">
-                A place where hostel life becomes unforgettable. Capture late-night rooftop talks,
-                share cinema-grade photographs and short reels, and stay connected with the people
-                who shaped your campus years.
-              </p>
-
-              <div className="mt-8 flex flex-wrap items-center gap-3.5">
-                <button
-                  type="button"
-                  onClick={onCreateAccount}
-                  className="gold-gradient-btn px-6 py-3 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all whitespace-nowrap shrink-0"
-                >
-                  <span>Start Account Setup</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-                {onConnectGoogle && (
-                  <button
-                    type="button"
-                    disabled={connectingGoogle}
-                    onClick={onConnectGoogle}
-                    className="px-5 py-3 rounded-xl text-sm font-medium border border-[#D4AF37]/40 bg-[#151519] text-[#F8F9FA] hover:border-[#D4AF37] hover:bg-white/[0.04] transition-colors flex items-center gap-2.5 whitespace-nowrap shrink-0 disabled:opacity-50"
-                  >
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        fill="#EA4335"
-                        d="M12 5c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.09 14.97 0 12 0 7.31 0 3.25 2.69 1.28 6.6l3.67 2.84C5.81 6.72 8.65 5 12 5z"
-                      />
-                      <path
-                        fill="#4285F4"
-                        d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.7 2.87c2.16-1.99 3.72-4.92 3.72-8.69z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M4.95 14.56A7.01 7.01 0 0 1 4.58 12c0-.89.16-1.75.44-2.56L1.35 6.6A11.96 11.96 0 0 0 0 12c0 1.94.46 3.77 1.28 5.4l3.67-2.84z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.7-2.87c-1.08.72-2.45 1.16-4.23 1.16-3.35 0-6.19-1.72-7.05-4.44L1.28 17.78C3.25 21.69 7.31 24 12 24z"
-                      />
-                    </svg>
-                    <span>{connectingGoogle ? 'Connecting...' : 'Connect with Google'}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onExploreCommunity}
-                  className="px-5 py-3 rounded-xl text-sm font-medium border border-white/15 text-[#F8F9FA] hover:border-[#D4AF37]/50 hover:bg-white/[0.04] transition-colors flex items-center gap-2 whitespace-nowrap shrink-0"
-                >
-                  <Compass className="w-4 h-4 text-[#D4AF37]" />
-                  <span>Explore Community</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onLogin}
-                  className="px-3 py-3 text-sm font-medium text-[#A1A1AA] hover:text-[#F8F9FA] transition-colors whitespace-nowrap shrink-0"
-                >
-                  Sign In
-                </button>
-              </div>
-            </div>
-
-            <div className="lg:col-span-6">
-              <div className="relative h-full min-h-[340px] lg:min-h-[460px] rounded-2xl overflow-hidden border border-white/[0.1] bg-[#151519]">
-                <img
-                  src={HERO_IMG}
-                  alt="Students gathered on a golden-lit architectural hostel rooftop at twilight"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0C]/85 via-[#0A0A0C]/20 to-transparent" />
-                <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-display font-semibold text-[#F8F9FA]">
-                      Where Hostel Life Comes Alive
-                    </p>
-                    <p className="text-xs text-[#A1A1AA] mt-0.5">
-                      Every Moment Has a Story · Made for Memories. Built for Connection.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Story & Design Philosophy */}
-      <section id="story" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 lg:py-24 border-b border-white/[0.06]">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          <div className="lg:col-span-5 space-y-4">
-            <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#F8F9FA]">
-              Designed for the stillness and spark of student life.
-            </h2>
-            <p className="text-[#A1A1AA] text-base leading-relaxed">
-              Ordinary feeds bury real memories beneath algorithmic noise. Hostel Friend preserves
-              your hostel corridor friendships, studio sessions, and spontaneous midnight walks in a
-              calm, obsidian-and-gold digital archive.
-            </p>
-          </div>
-          <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div className="rounded-2xl overflow-hidden border border-white/[0.08] bg-[#151519]">
-              <div className="aspect-[4/3] overflow-hidden">
-                <img
-                  src={LOUNGE_IMG}
-                  alt="Students collaborating in a sunlit modern hostel common room"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-4">
-                <p className="text-sm font-display font-semibold text-[#F8F9FA]">
-                  Shared Study & Common Rooms
-                </p>
-                <p className="text-xs text-[#A1A1AA] mt-1">
-                  Discover peers across your hostel or campus block.
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl overflow-hidden border border-white/[0.08] bg-[#151519]">
-              <div className="aspect-[4/3] overflow-hidden">
-                <img
-                  src={COURTYARD_IMG}
-                  alt="Evening gathering of hostel friends in an architectural courtyard"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-4">
-                <p className="text-sm font-display font-semibold text-[#F8F9FA]">
-                  Curated Nightly Archives
-                </p>
-                <p className="text-xs text-[#A1A1AA] mt-1">
-                  Preserve photographs and reels with friends who lived them.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Feature Showcase (Asymmetric Bento) */}
-      <section id="features" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 lg:py-24 border-b border-white/[0.06]">
-        <div className="max-w-2xl mb-12">
-          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#F8F9FA]">
-            Your People. Your Place. Your Universe.
-          </h2>
-          <p className="mt-3 text-[#A1A1AA] text-base">
-            Every surface is engineered for effortless storytelling, fast loading on campus
-            networks, and authentic human connection.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          <div className="md:col-span-7 bg-[#151519] border border-white/[0.08] rounded-2xl p-7 flex flex-col justify-between">
-            <div>
-              <span className="text-xs font-mono text-[#D4AF37]">01</span>
-              <h3 className="mt-3 font-display text-xl font-semibold text-[#F8F9FA]">
-                Chronological & Curated Social Feeds
-              </h3>
-              <p className="mt-2 text-sm text-[#A1A1AA] leading-relaxed">
-                Switch seamlessly between For You, Following, and Latest views. React with likes,
-                open threaded discussions, bookmark cherished posts, and share stories cleanly.
-              </p>
-            </div>
-            <div className="mt-6 pt-5 border-t border-white/[0.06] flex items-center gap-6 text-xs text-[#A1A1AA]">
-              <span className="flex items-center gap-1.5">
-                <Heart className="w-3.5 h-3.5 text-[#D4AF37]" /> Real-time engagement
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" /> Zero ad clutter
-              </span>
-            </div>
-          </div>
-
-          <div className="md:col-span-5 bg-[#151519] border border-white/[0.08] rounded-2xl overflow-hidden grid grid-cols-1 sm:grid-cols-2">
-            <div className="p-6 flex flex-col justify-between">
-              <div>
-                <span className="text-xs font-mono text-[#D4AF37]">02</span>
-                <h3 className="mt-3 font-display text-lg font-semibold text-[#F8F9FA]">
-                  Vertical Moments
-                </h3>
-                <p className="mt-2 text-xs text-[#A1A1AA] leading-relaxed">
-                  Full-bleed vertical video viewer with keyboard and swipe controls built for mobile
-                  and desktop.
-                </p>
-              </div>
-              <div className="mt-4 flex items-center gap-1.5 text-xs text-[#D4AF37]">
-                <Film className="w-3.5 h-3.5" />
-                <span>Reels & Clips</span>
-              </div>
-            </div>
-            <div className="aspect-[9/16] sm:aspect-auto h-full max-h-72 sm:max-h-none overflow-hidden">
+      {/* Cinematic Welcome Hero + Tilted 4-Photo Gallery + Action Buttons + Architectural Silhouette */}
+      <section id="top" className="relative bg-[#050505] border-b border-white/[0.06] overflow-hidden">
+        {/* Atmospheric Dusk Hero Backdrop */}
+        <div className="relative pt-8 sm:pt-12 pb-6 sm:pb-8">
+          <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
+            {!heroImgFailed ? (
               <img
-                src={VERTICAL_IMG}
-                alt="Student photographer capturing golden hour campus views"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
+                src={HERO_ARCHITECTURE_IMG}
+                alt="Islamia College Peshawar historic red-brick building at dusk"
+                loading="eager"
+                decoding="async"
+                onError={() => setHeroImgFailed(true)}
+                className="w-full h-full object-cover object-center scale-[1.03] brightness-[0.65] contrast-[1.08] saturate-[1.05]"
               />
-            </div>
+            ) : (
+              <div className="w-full h-full bg-gradient-to-b from-[#16120A] via-[#0D0B07] to-[#050505]" />
+            )}
+            {/* Dusk Sky & Vignette Overlays */}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#050505]/95 via-[#050505]/35 to-[#050505]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#050505]/75 via-transparent to-[#050505]/75" />
+            {/* Warm Golden Lighting Around the Architecture */}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_58%,rgba(245,197,66,0.22),transparent_62%)]" />
           </div>
 
-          <div className="md:col-span-6 bg-[#151519] border border-white/[0.08] rounded-2xl p-7">
-            <span className="text-xs font-mono text-[#D4AF37]">03</span>
-            <h3 className="mt-3 font-display text-xl font-semibold text-[#F8F9FA]">
-              Private One-to-One Messaging
-            </h3>
-            <p className="mt-2 text-sm text-[#A1A1AA] leading-relaxed">
-              Coordinate hostel meetups, swap notes, and stay close with direct conversations
-              protected by participant-only database isolation.
-            </p>
-            <div className="mt-5 flex items-center gap-2 text-xs text-[#A1A1AA]">
-              <MessageSquare className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span>Instant unread tracking · Private threads</span>
+          <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 text-center">
+            {/* Main Title */}
+            <div className="pt-1 sm:pt-2">
+              <p className="font-script text-4xl sm:text-5xl md:text-6xl text-[#F5C542] leading-none drop-shadow-[0_2px_18px_rgba(245,197,66,0.4)]">
+                Welcome to
+              </p>
+              <h1 className="mt-1 font-display font-extrabold tracking-tight text-4xl sm:text-6xl md:text-7xl leading-[1.04] drop-shadow-[0_6px_24px_rgba(0,0,0,0.9)]">
+                <span className="text-[#FFFFFF]">Hostel </span>
+                <span className="text-[#F5C542]">Friend</span>
+              </h1>
+              {/* Curved Golden Underline Swoosh */}
+              <div className="mt-1.5 flex justify-center" aria-hidden="true">
+                <svg
+                  viewBox="0 0 260 18"
+                  className="w-44 sm:w-64 h-3.5 text-[#F5C542] drop-shadow-[0_2px_10px_rgba(245,197,66,0.5)]"
+                  fill="none"
+                >
+                  <path
+                    d="M8 13C72 3 188 3 252 13"
+                    stroke="currentColor"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
             </div>
-          </div>
 
-          <div id="safety" className="md:col-span-6 bg-[#151519] border border-white/[0.08] rounded-2xl p-7">
-            <span className="text-xs font-mono text-[#D4AF37]">04</span>
-            <h3 className="mt-3 font-display text-xl font-semibold text-[#F8F9FA]">
-              Built-in Safety & Privacy Controls
-            </h3>
-            <p className="mt-2 text-sm text-[#A1A1AA] leading-relaxed">
-              Your email and settings stay strictly isolated from public profiles. Block abusive
-              accounts, control visibility, and report unsafe content directly to community
-              moderators.
-            </p>
-            <div className="mt-5 flex items-center gap-2 text-xs text-[#A1A1AA]">
-              <Lock className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span>Verified accounts · Zero-trust security rules</span>
+            {/* Breathing Window Framing the Historic Red-Brick Building */}
+            <div className="h-32 sm:h-48 md:h-56" aria-hidden="true" />
+
+            {/* Welcome Message */}
+            <div className="pt-2">
+              <h2 className="font-display text-xl sm:text-2xl md:text-3xl font-bold tracking-tight drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)]">
+                <span className="text-[#FFFFFF]">Your Hostel. Your People. </span>
+                <span className="text-[#F5C542]">Your Memories.</span>
+              </h2>
+              <p className="mt-3 text-sm sm:text-base text-[#D0D0D0] max-w-lg mx-auto leading-relaxed drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+                A place where hostel life becomes unforgettable.
+                <br />
+                Capture moments, share experiences and stay connected with your hostel friends.
+              </p>
             </div>
           </div>
         </div>
-      </section>
 
-      {/* Live Community Highlights (Real Firestore Data) */}
-      <section id="highlights" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 lg:py-24 border-b border-white/[0.06]">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
-          <div>
-            <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#F8F9FA]">
-              Live From the Community
-            </h2>
-            <p className="mt-2 text-sm text-[#A1A1AA]">
-              Real stories and members currently active on Hostel Friend.
-            </p>
+        {/* Golden Light Divider + Graduation Cap */}
+        <div className="relative z-10 max-w-3xl mx-auto px-4 pt-2 pb-6 flex items-center justify-center gap-4">
+          <div className="h-[1.5px] flex-1 bg-gradient-to-r from-transparent via-[#F5C542]/70 to-[#F5C542]" />
+          <div className="relative flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-[#F5C542]/25 blur-md" />
+            <GraduationCap className="relative w-5 h-5 sm:w-6 sm:h-6 text-[#F5C542]" />
           </div>
-          <button
-            type="button"
-            onClick={onExploreCommunity}
-            className="text-sm font-medium text-[#D4AF37] hover:text-[#E7C96F] flex items-center gap-1.5 whitespace-nowrap shrink-0"
-          >
-            <span>Open Explore</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="h-[1.5px] flex-1 bg-gradient-to-l from-transparent via-[#F5C542]/70 to-[#F5C542]" />
         </div>
 
-        {loadingHighlights ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="h-64 rounded-2xl bg-[#151519] border border-white/[0.08] animate-pulse"
-              />
-            ))}
-          </div>
-        ) : recentPosts.length === 0 ? (
-          <div className="bg-[#151519] border border-white/[0.08] rounded-2xl p-10 text-center">
-            <p className="font-display text-lg font-semibold text-[#F8F9FA]">
-              Be the first to anchor your hostel’s archive.
-            </p>
-            <p className="mt-2 text-sm text-[#A1A1AA] max-w-md mx-auto">
-              Create your profile in seconds and publish the inaugural photograph or video story on
-              Hostel Friend.
-            </p>
-            <button
-              type="button"
-              onClick={onCreateAccount}
-              className="mt-6 gold-gradient-btn px-5 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-2"
-            >
-              <span>Start Account Setup</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {recentPosts.map((post) => (
-              <button
-                key={post.id}
-                type="button"
-                onClick={onExploreCommunity}
-                className="text-left bg-[#151519] border border-white/[0.08] hover:border-[#D4AF37]/40 rounded-2xl overflow-hidden transition-colors group"
-              >
-                <div className="aspect-[4/3] bg-[#0A0A0C] overflow-hidden">
-                  {post.mediaType === 'text' ? (
-                    <div className="w-full h-full p-4 flex flex-col justify-between bg-gradient-to-br from-[#151519] via-[#0A0A0C] to-[#151519] border-b border-white/[0.06]">
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-[#D4AF37] font-semibold">
-                        Hostel Note
-                      </span>
-                      <p className="text-sm text-[#F8F9FA] font-medium leading-relaxed line-clamp-4">
-                        {post.caption}
-                      </p>
-                      <span className="text-[11px] text-[#71717A] truncate">
-                        {post.hashtags.slice(0, 2).map((t) => `#${t}`).join(' ')}
+        {/* Four-Photo Tilted College & Hostel Gallery */}
+        <div className="relative z-10 max-w-4xl mx-auto px-3 sm:px-6 pb-8 sm:pb-10">
+          {/* Warm Golden Glow Behind Cards */}
+          <div
+            className="absolute inset-x-6 top-1/2 -translate-y-1/2 h-40 sm:h-52 bg-[radial-gradient(ellipse_at_center,rgba(245,197,66,0.24),rgba(217,155,25,0.08)_50%,transparent_75%)] pointer-events-none blur-xl"
+            aria-hidden="true"
+          />
+
+          <div className="relative grid grid-cols-4 gap-1.5 sm:gap-4 items-center">
+            {COLLEGE_GALLERY_PHOTOS.map((photo) => {
+              const isFailed = Boolean(failedGalleryIds[photo.id]);
+              return (
+                <button
+                  key={photo.id}
+                  type="button"
+                  onClick={() => !isFailed && setLightboxPhoto(photo)}
+                  aria-label={photo.caption}
+                  className={`group relative aspect-[3/4] sm:aspect-[4/5] w-full rounded-lg sm:rounded-xl overflow-hidden border-[2.5px] sm:border-[3.5px] border-white bg-[#101010] shadow-[0_14px_32px_rgba(0,0,0,0.85)] transition-transform duration-300 hover:scale-[1.04] hover:z-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C542] ${photo.tiltClass}`}
+                >
+                  {isFailed ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-[#101010] text-center">
+                      <Camera className="w-4 h-4 text-[#F5C542] mb-1" />
+                      <span className="text-[9px] sm:text-xs text-[#D0D0D0] leading-tight">
+                        {photo.caption}
                       </span>
                     </div>
-                  ) : post.mediaType === 'video' ? (
-                    <video
-                      src={post.mediaUrl}
-                      muted
-                      preload="metadata"
-                      className="w-full h-full object-cover"
-                    />
                   ) : (
                     <img
-                      src={post.mediaUrl}
-                      alt={post.caption || 'Community story'}
-                      loading="lazy"
+                      src={photo.src}
+                      alt={photo.alt}
+                      loading="eager"
+                      decoding="async"
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                      onError={() =>
+                        setFailedGalleryIds((prev) => ({ ...prev, [photo.id]: true }))
+                      }
+                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                     />
                   )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Preserved Four Core Action Buttons */}
+        <div className="relative z-10 max-w-md mx-auto px-4 sm:px-6 pb-8 space-y-3.5">
+          {/* 1. Primary Button: Start Account Setup */}
+          <button
+            type="button"
+            onClick={onCreateAccount}
+            className="gold-gradient-btn w-full py-3.5 sm:py-4 px-6 rounded-full font-display font-bold text-base sm:text-lg flex items-center justify-center gap-2.5 shadow-[0_8px_28px_rgba(245,197,66,0.28)] active:scale-[0.99] transition-all"
+          >
+            <span>Start Account Setup</span>
+            <ArrowRight className="w-5 h-5" />
+          </button>
+
+          {/* 2. Google Login Button: Connect with Google */}
+          {onConnectGoogle && (
+            <button
+              type="button"
+              disabled={connectingGoogle}
+              onClick={onConnectGoogle}
+              className="w-full py-3.5 px-6 rounded-full bg-[#101010] border border-[#F5C542]/75 hover:border-[#F5C542] hover:bg-[#171717] text-[#FFFFFF] font-display font-semibold text-base flex items-center justify-center gap-3 active:scale-[0.99] transition-all disabled:opacity-50"
+            >
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="#EA4335"
+                  d="M12 5c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.09 14.97 0 12 0 7.31 0 3.25 2.69 1.28 6.6l3.67 2.84C5.81 6.72 8.65 5 12 5z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.7 2.87c2.16-1.99 3.72-4.92 3.72-8.69z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M4.95 14.56A7.01 7.01 0 0 1 4.58 12c0-.89.16-1.75.44-2.56L1.35 6.6A11.96 11.96 0 0 0 0 12c0 1.94.46 3.77 1.28 5.4l3.67-2.84z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.7-2.87c-1.08.72-2.45 1.16-4.23 1.16-3.35 0-6.19-1.72-7.05-4.44L1.28 17.78C3.25 21.69 7.31 24 12 24z"
+                />
+              </svg>
+              <span>{connectingGoogle ? 'Connecting...' : 'Connect with Google'}</span>
+            </button>
+          )}
+
+          {/* 3 & 4. Explore Community + Sign In */}
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onExploreCommunity}
+              className="flex-1 sm:flex-none px-5 py-3 rounded-full bg-[#101010] border border-white/20 hover:border-[#F5C542]/70 hover:bg-[#171717] text-[#FFFFFF] text-sm font-medium flex items-center justify-center gap-2.5 transition-all whitespace-nowrap"
+            >
+              <Compass className="w-4 h-4 text-[#F5C542] shrink-0" />
+              <span>Explore Community</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onLogin}
+              className="px-5 py-3 text-sm sm:text-base font-semibold text-[#FFFFFF] hover:text-[#F5C542] transition-colors whitespace-nowrap shrink-0"
+            >
+              Sign In
+            </button>
+          </div>
+
+          {/* About Developer Trigger on Main Screen */}
+          <div className="pt-2 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setShowDeveloperModal(true)}
+              className="px-5 py-2.5 rounded-full bg-[#101010]/90 border border-[#F5C542]/45 hover:border-[#F5C542] hover:bg-[#171717] text-[#F5C542] text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <User className="w-4 h-4 shrink-0" />
+              <span>About Developer</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Golden Architectural Silhouette & Motto Footer Banner */}
+        <div className="relative pt-2 pb-7 overflow-hidden">
+          {!heroImgFailed && (
+            <div className="relative max-w-4xl mx-auto h-24 sm:h-36 overflow-hidden pointer-events-none select-none">
+              <img
+                src={HERO_ARCHITECTURE_IMG}
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                className="w-full h-full object-cover object-[50%_42%] opacity-35 sepia saturate-[2.4] hue-rotate-[-8deg] brightness-75 contrast-125"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/30 to-[#050505]" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-transparent to-[#050505]" />
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(245,197,66,0.18),transparent_68%)]" />
+            </div>
+          )}
+
+          <div className="relative z-10 max-w-3xl mx-auto px-4 flex items-center justify-center gap-3 -mt-2">
+            <span className="hidden sm:block h-[1px] w-12 bg-gradient-to-r from-transparent to-[#F5C542]/60" />
+            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-[0.2em] text-[#F5C542] text-center">
+              BUILD FRIENDSHIPS • CREATE MEMORIES • GROW TOGETHER
+            </p>
+            <span className="hidden sm:block h-[1px] w-12 bg-gradient-to-l from-transparent to-[#F5C542]/60" />
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="max-w-7xl mx-auto px-5 sm:px-8 py-12 flex flex-col gap-6 text-xs text-[#A1A1AA]">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+          <div className="flex items-center gap-3">
+            <img
+              src="/icons/icon-192.png"
+              alt="Hostel Friend"
+              className="w-8 h-8 rounded-lg object-cover border border-white/15"
+            />
+            <div>
+              <p className="font-display font-semibold text-sm text-[#FFFFFF]">
+                Hostel <span className="text-[#F5C542]">Friend</span>
+              </p>
+              <p className="mt-0.5 text-[#D0D0D0]">Connect • Share • Discover</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-6 text-[#D0D0D0]">
+            <button type="button" onClick={onExploreCommunity} className="hover:text-[#F5C542]">
+              Explore
+            </button>
+            <button type="button" onClick={onCreateAccount} className="hover:text-[#F5C542]">
+              Create Account
+            </button>
+            <button type="button" onClick={onLogin} className="hover:text-[#F5C542]">
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeveloperModal(true)}
+              className="hover:text-[#F5C542]"
+            >
+              About Developer
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      {/* About the Developer Modal */}
+      {showDeveloperModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="developer-modal-title"
+          onClick={() => setShowDeveloperModal(false)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3.5 sm:p-6"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-[#101010] border border-[#F5C542]/40 rounded-3xl p-5 sm:p-8 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 pb-5 mb-6 border-b border-white/[0.08]">
+              <div>
+                <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-[#F5C542]">
+                  Founder &amp; Creator
+                </p>
+                <h2
+                  id="developer-modal-title"
+                  className="mt-1 font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#FFFFFF]"
+                >
+                  About the Developer
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeveloperModal(false)}
+                aria-label="Close developer information"
+                className="w-9 h-9 rounded-full bg-[#050505] border border-white/15 hover:border-[#F5C542] text-[#FFFFFF] flex items-center justify-center shrink-0 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+              {/* Developer Identity Card */}
+              <div className="lg:col-span-5 flex flex-col gap-5">
+                <div className="flex items-center gap-4">
+                  <div className="relative w-24 h-28 sm:w-28 sm:h-32 rounded-2xl overflow-hidden border border-[#F5C542]/45 bg-[#050505] shrink-0 shadow-lg">
+                    {!devImgFailed ? (
+                      <img
+                        src="/images/developer-bait-ullah.png"
+                        alt="Bait Ullah — Founder & Developer of Hostel Friend"
+                        className="w-full h-full object-cover object-[50%_20%]"
+                        onError={() => setDevImgFailed(true)}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#1C1C22] to-[#050505] text-[#F5C542]">
+                        <span className="font-display text-2xl font-bold tracking-tight">BU</span>
+                        <span className="text-[10px] uppercase tracking-widest text-[#D0D0D0] mt-0.5">
+                          Founder
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <h3 className="font-display text-xl sm:text-2xl font-bold text-[#FFFFFF]">
+                      Bait Ullah
+                    </h3>
+                    <p className="mt-1 text-xs font-semibold text-[#F5C542]">
+                      Founder &amp; Developer of Hostel Friend
+                    </p>
+                    <p className="mt-1 text-xs text-[#D0D0D0]">Age: 19 years</p>
+                  </div>
                 </div>
-                <div className="p-4">
-                  <div className="flex items-center gap-2.5">
-                    <Avatar src={post.authorAvatarUrl} name={post.authorName} size="xs" />
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-[#F8F9FA] truncate">
-                        @{post.authorUsername}
-                      </p>
-                      <p className="text-[11px] text-[#71717A]">
-                        {formatRelativeTime(post.createdAt)} · {formatCount(post.likesCount)} likes
+
+                <div className="grid grid-cols-1 gap-3 pt-4 border-t border-white/[0.06] text-xs">
+                  <div className="flex items-start gap-2.5 text-[#D0D0D0]">
+                    <GraduationCap className="w-4 h-4 text-[#F5C542] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[#A1A1AA] text-[11px] uppercase tracking-wider">Education</p>
+                      <p className="font-medium text-[#FFFFFF] mt-0.5">
+                        First Year (FSc) · Islamia College Peshawar
                       </p>
                     </div>
                   </div>
-                  {post.caption && (
-                    <p className="mt-2.5 text-xs text-[#A1A1AA] line-clamp-2">{post.caption}</p>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
 
-        {featuredMembers.length > 0 && (
-          <div className="mt-10 pt-8 border-t border-white/[0.06]">
-            <p className="text-xs font-medium text-[#A1A1AA] mb-4">Active Hostel Friend Members</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {featuredMembers.map((member) => (
-                <button
-                  key={member.uid}
-                  type="button"
-                  onClick={onExploreCommunity}
-                  className="bg-[#151519] border border-white/[0.08] hover:border-[#D4AF37]/30 rounded-xl p-3.5 text-left transition-colors"
-                >
-                  <Avatar src={member.avatarUrl} name={member.fullName} size="sm" />
-                  <p className="mt-2.5 text-xs font-semibold text-[#F8F9FA] truncate">
-                    {member.fullName}
+                  <div className="flex items-start gap-2.5 text-[#D0D0D0]">
+                    <Building2 className="w-4 h-4 text-[#F5C542] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[#A1A1AA] text-[11px] uppercase tracking-wider">Hostel</p>
+                      <p className="font-medium text-[#FFFFFF] mt-0.5">
+                        HST Haji Sahib Turangzai Hostel, Islamia College Peshawar
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 text-[#D0D0D0]">
+                    <MapPin className="w-4 h-4 text-[#F5C542] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[#A1A1AA] text-[11px] uppercase tracking-wider">
+                        Home District
+                      </p>
+                      <p className="font-medium text-[#FFFFFF] mt-0.5">
+                        District Mohmand, Khyber Pakhtunkhwa, Pakistan
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Biography, Vision, and WhatsApp Support */}
+              <div className="lg:col-span-7 flex flex-col justify-between gap-5 lg:border-l lg:border-white/[0.06] lg:pl-8">
+                <div className="space-y-3.5 text-sm text-[#D0D0D0] leading-relaxed">
+                  <p>
+                    Meet Bait Ullah, the founder and creator of Hostel Friend, a student-driven
+                    social networking platform designed to bring hostel communities closer.
                   </p>
-                  <p className="text-[11px] text-[#A1A1AA] truncate">@{member.username}</p>
-                </button>
-              ))}
+                  <p>
+                    Originally from District Mohmand, Khyber Pakhtunkhwa, Bait Ullah is currently a
+                    First Year student at the prestigious Islamia College Peshawar and resides at
+                    HST Haji Sahib Turangzai Hostel.
+                  </p>
+                  <p>
+                    Inspired by his own hostel experiences, friendships and student life, he
+                    envisioned a digital platform where students can connect, share photographs and
+                    videos, discover new friendships, communicate and preserve unforgettable
+                    memories.
+                  </p>
+                  <p>
+                    Hostel Friend represents his vision of connecting students beyond hostel rooms
+                    and classrooms, building meaningful relationships and making every moment of
+                    student life memorable.
+                  </p>
+                </div>
+
+                {/* Developer Vision */}
+                <div className="rounded-2xl border border-[#F5C542]/25 bg-[#050505]/90 p-4">
+                  <div className="flex items-start gap-3">
+                    <Quote className="w-5 h-5 text-[#F5C542] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#F5C542]">
+                        Developer Vision
+                      </p>
+                      <p className="mt-1.5 text-sm font-medium text-[#FFFFFF] leading-relaxed">
+                        &ldquo;Connecting students, creating friendships, and preserving the
+                        unforgettable memories of hostel life.&rdquo;
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* WhatsApp Contact Block */}
+                <div className="pt-3 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <p className="text-xs sm:text-sm text-[#D0D0D0] leading-relaxed">
+                    Have a question, need information, or want assistance with Hostel Friend? Contact
+                    the developer directly on WhatsApp.
+                  </p>
+                  <a
+                    href="https://wa.me/923439406862?text=Assalam-o-Alaikum%2C%20I%20need%20some%20information%20about%20Hostel%20Friend."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2.5 w-full sm:w-auto px-5 py-3 rounded-xl bg-[#25D366] hover:bg-[#20BD5A] active:bg-[#1DA851] text-[#041209] font-semibold text-sm transition-colors whitespace-nowrap shrink-0 shadow-lg shadow-[#25D366]/15"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden="true"
+                      className="w-5 h-5 shrink-0"
+                    >
+                      <path d="M12.031 2c-5.516 0-9.969 4.453-9.969 9.969 0 1.766.469 3.484 1.344 5l-1.406 5.156 5.281-1.391c1.469.797 3.109 1.219 4.75 1.219 5.516 0 9.969-4.453 9.969-9.969S17.547 2 12.031 2zm5.813 14.125c-.25.703-1.438 1.344-2 1.422-.516.078-1.172.109-1.891-.125-.438-.141-.984-.328-1.688-.641-2.969-1.281-4.906-4.266-5.047-4.453-.141-.188-1.203-1.609-1.203-3.063 0-1.453.766-2.172 1.031-2.469.266-.297.578-.375.766-.375.188 0 .375.016.547.016.172 0 .406-.063.641.484.25.578.828 2.016.906 2.156.078.141.125.313.031.5-.094.188-.141.313-.297.484-.141.172-.313.391-.438.516-.141.141-.297.297-.125.594.172.297.766 1.266 1.641 2.047 1.125 1 2.078 1.313 2.375 1.469.297.141.469.125.641-.078.172-.203.75-.875.953-1.172.203-.297.406-.25.672-.141.266.094 1.719.813 2.016.953.297.141.484.219.563.344.078.125.078.734-.172 1.438z" />
+                    </svg>
+                    <span>Get Help on WhatsApp</span>
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
-        )}
-      </section>
+        </div>
+      )}
 
-      {/* Quiet Footer */}
-      <footer className="max-w-7xl mx-auto px-5 sm:px-8 py-12 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-xs text-[#71717A]">
-        <div className="flex items-center gap-3">
-          <img
-            src="/icons/icon-192.png"
-            alt="Hostel Friend"
-            className="w-8 h-8 rounded-lg object-cover border border-white/15"
-          />
-          <div>
-            <p className="font-display font-semibold text-sm text-[#F8F9FA]">Hostel Friend</p>
-            <p className="mt-0.5">Connect • Share • Discover</p>
+      {/* Optional Lightbox Preview Modal for Gallery Photos */}
+      {lightboxPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={lightboxPhoto.caption}
+          onClick={() => setLightboxPhoto(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-2xl w-full bg-[#101010] border border-[#F5C542]/40 rounded-2xl overflow-hidden shadow-2xl"
+          >
+            <button
+              type="button"
+              onClick={() => setLightboxPhoto(null)}
+              aria-label="Close photo preview"
+              className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-black/75 border border-white/20 text-white hover:border-[#F5C542] flex items-center justify-center"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={lightboxPhoto.src}
+              alt={lightboxPhoto.alt}
+              referrerPolicy="no-referrer"
+              className="w-full max-h-[75vh] object-contain bg-[#050505]"
+            />
+            <div className="p-4 border-t border-white/[0.08] flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-[#FFFFFF]">{lightboxPhoto.caption}</p>
+              <span className="text-[11px] text-[#F5C542] uppercase tracking-wider shrink-0">
+                Hostel Friend
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-6 text-[#A1A1AA]">
-          <button type="button" onClick={onExploreCommunity} className="hover:text-[#F8F9FA]">
-            Explore
-          </button>
-          <button type="button" onClick={onCreateAccount} className="hover:text-[#F8F9FA]">
-            Create Account
-          </button>
-          <button type="button" onClick={onLogin} className="hover:text-[#F8F9FA]">
-            Sign In
-          </button>
-          <a href="#safety" className="hover:text-[#F8F9FA]">
-            Privacy & Safety
-          </a>
-        </div>
-      </footer>
+      )}
     </div>
   );
 }

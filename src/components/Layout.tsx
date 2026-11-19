@@ -6,6 +6,7 @@ import {
   Home,
   LogOut,
   MessageSquare,
+  Plus,
   PlusSquare,
   Settings,
   Shield,
@@ -85,23 +86,29 @@ export function Layout({
   ];
 
   return (
-    <div className="min-h-screen bg-[#0A0A0C] text-[#F8F9FA] flex flex-col md:flex-row">
+    <div className="min-h-screen bg-[#050505] text-[#FFFFFF] flex flex-col md:flex-row">
       {/* Desktop Left Sidebar */}
-      <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64 md:fixed md:inset-y-0 md:left-0 bg-[#0A0A0C] border-r border-white/[0.08] z-30">
-        <div className="px-4 lg:px-6 h-20 flex items-center justify-center lg:justify-start border-b border-white/[0.06]">
+      <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64 md:fixed md:inset-y-0 md:left-0 bg-[#050505] border-r border-white/[0.08] z-30">
+        <div className="px-4 lg:px-6 h-20 flex items-center justify-center lg:justify-start border-b border-[#F5C542]/15">
           <button
             type="button"
             onClick={() => onNavigate('feed')}
-            className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00C8FF] rounded-lg"
+            className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C542] rounded-lg min-w-0"
           >
             <img
               src="/icons/icon-192.png"
               alt="Hostel Friend"
-              className="w-8 h-8 rounded-lg object-cover border border-white/15 shrink-0"
+              className="w-9 h-9 rounded-xl object-cover border border-[#F5C542]/40 shrink-0"
             />
-            <span className="hidden lg:inline font-display font-bold tracking-tight text-lg text-[#F8F9FA] whitespace-nowrap shrink-0">
-              Hostel Friend
-            </span>
+            <div className="hidden lg:block min-w-0 leading-tight">
+              <span className="font-display font-bold tracking-tight text-lg whitespace-nowrap shrink-0 block">
+                <span className="text-[#FFFFFF]">Hostel </span>
+                <span className="text-[#F5C542]">Friend</span>
+              </span>
+              <span className="text-[10px] text-[#A5A5AD] tracking-wide block truncate">
+                Connect • Share • Discover
+              </span>
+            </div>
           </button>
         </div>
 
@@ -116,8 +123,8 @@ export function Layout({
                 onClick={() => onNavigate(item.id)}
                 className={`w-full min-h-[44px] px-3 lg:px-3.5 py-2.5 rounded-xl flex items-center justify-center lg:justify-between gap-3 transition-colors duration-150 whitespace-nowrap shrink-0 ${
                   isActive
-                    ? 'bg-[#151519] text-[#D4AF37] border border-[#D4AF37]/25'
-                    : 'text-[#A1A1AA] hover:text-[#F8F9FA] hover:bg-white/[0.04] border border-transparent'
+                    ? 'bg-[#111114] text-[#F5C542] border border-[#F5C542]/30 shadow-[0_4px_16px_rgba(245,197,66,0.08)]'
+                    : 'text-[#A5A5AD] hover:text-[#FFFFFF] hover:bg-[#111114]/70 border border-transparent'
                 }`}
               >
                 <span className="flex items-center gap-3.5 min-w-0">
@@ -125,7 +132,7 @@ export function Layout({
                   <span className="hidden lg:inline text-sm font-medium truncate">{item.label}</span>
                 </span>
                 {typeof item.count === 'number' && item.count > 0 && (
-                  <span className="hidden lg:inline font-mono text-xs tabular-nums text-[#D4AF37] font-medium">
+                  <span className="hidden lg:inline font-mono text-xs tabular-nums text-[#F5C542] font-semibold">
                     {item.count}
                   </span>
                 )}
@@ -183,47 +190,57 @@ export function Layout({
         )}
       </aside>
 
-      {/* Mobile Compact Top Bar */}
-      <header className="md:hidden sticky top-0 z-30 h-14 px-4 bg-[#0A0A0C]/90 backdrop-blur-xl border-b border-white/[0.08] flex items-center justify-between gap-4">
+      {/* Mobile Premium Black-and-Gold Header */}
+      <header className="md:hidden sticky top-0 z-30 h-15 px-3.5 bg-[#050505]/95 backdrop-blur-xl border-b border-[#F5C542]/20 shadow-[0_2px_20px_rgba(245,197,66,0.08)] flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => onNavigate('feed')}
-          className="flex items-center gap-2.5 whitespace-nowrap shrink-0"
+          className="flex items-center gap-2.5 min-w-0 text-left shrink"
         >
           <img
             src="/icons/icon-192.png"
             alt="Hostel Friend"
-            className="w-7 h-7 rounded-lg object-cover border border-white/15 shrink-0"
+            className="w-8 h-8 rounded-xl object-cover border border-[#F5C542]/45 shrink-0 shadow-[0_0_12px_rgba(245,197,66,0.18)]"
           />
-          <span className="font-display font-bold tracking-tight text-base text-[#F8F9FA]">
-            Hostel Friend
-          </span>
+          <div className="min-w-0 leading-tight">
+            <span className="font-display font-extrabold tracking-tight text-[15px] whitespace-nowrap block">
+              <span className="text-[#FFFFFF]">Hostel </span>
+              <span className="text-[#F5C542]">Friend</span>
+            </span>
+            <span className="text-[9.5px] text-[#A5A5AD] tracking-wide block truncate">
+              Connect • Share • Discover
+            </span>
+          </div>
         </button>
 
-        <div className="flex items-center gap-0.5">
-          <PWAInstallButton variant="compact" className="mr-1" />
+        <div className="flex items-center gap-0.5 shrink-0">
+          <PWAInstallButton variant="compact" className="mr-0.5" />
           <button
             type="button"
             onClick={() => toggleSoundVfx()}
             aria-label={soundOn ? 'Mute Sound VFX' : 'Enable Sound VFX'}
-            className={`min-w-[40px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
-              soundOn ? 'text-[#D4AF37]' : 'text-[#71717A]'
+            className={`min-w-[38px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+              soundOn
+                ? 'text-[#F5C542] hover:bg-[#19191D]'
+                : 'text-[#A5A5AD] hover:text-[#FFFFFF] hover:bg-[#19191D]'
             }`}
           >
-            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {soundOn ? <Volume2 className="w-[18px] h-[18px]" /> : <VolumeX className="w-[18px] h-[18px]" />}
           </button>
           <button
             type="button"
             onClick={() => onNavigate('notifications')}
             aria-label="Notifications"
-            className={`relative min-w-[42px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
-              activeView === 'notifications' ? 'text-[#D4AF37]' : 'text-[#A1A1AA]'
+            className={`relative min-w-[38px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+              activeView === 'notifications'
+                ? 'text-[#F5C542]'
+                : 'text-[#F5C542]/90 hover:text-[#F5C542] hover:bg-[#19191D]'
             }`}
           >
             <Bell className="w-5 h-5" />
             {unreadNotifications > 0 && (
-              <span className="absolute top-2 right-2 text-[10px] font-mono font-semibold text-[#D4AF37]">
-                {unreadNotifications}
+              <span className="absolute top-1.5 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#EF4444] text-[#FFFFFF] text-[10px] font-bold flex items-center justify-center leading-none tabular-nums shadow-sm">
+                {unreadNotifications > 99 ? '99+' : unreadNotifications}
               </span>
             )}
           </button>
@@ -231,14 +248,16 @@ export function Layout({
             type="button"
             onClick={() => onNavigate('messages')}
             aria-label="Messages"
-            className={`relative min-w-[42px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
-              activeView === 'messages' ? 'text-[#D4AF37]' : 'text-[#A1A1AA]'
+            className={`relative min-w-[38px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+              activeView === 'messages'
+                ? 'text-[#F5C542]'
+                : 'text-[#F5C542]/90 hover:text-[#F5C542] hover:bg-[#19191D]'
             }`}
           >
             <MessageSquare className="w-5 h-5" />
             {unreadMessages > 0 && (
-              <span className="absolute top-2 right-2 text-[10px] font-mono font-semibold text-[#D4AF37]">
-                {unreadMessages}
+              <span className="absolute top-1.5 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#F5C542] text-[#050505] text-[10px] font-bold flex items-center justify-center leading-none tabular-nums shadow-sm">
+                {unreadMessages > 99 ? '99+' : unreadMessages}
               </span>
             )}
           </button>
@@ -246,8 +265,10 @@ export function Layout({
             type="button"
             onClick={() => onNavigate('settings')}
             aria-label="Settings"
-            className={`min-w-[42px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
-              activeView === 'settings' ? 'text-[#D4AF37]' : 'text-[#A1A1AA]'
+            className={`min-w-[38px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors ${
+              activeView === 'settings'
+                ? 'text-[#F5C542]'
+                : 'text-[#F5C542]/90 hover:text-[#F5C542] hover:bg-[#19191D]'
             }`}
           >
             <Settings className="w-5 h-5" />
@@ -256,37 +277,69 @@ export function Layout({
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 md:pl-20 lg:pl-64 pb-20 md:pb-10 min-w-0">
+      <main className="flex-1 md:pl-20 lg:pl-64 pb-24 md:pb-10 min-w-0">
         {maintenanceNotice && (
-          <div className="bg-[#151519] border-b border-[#D4AF37]/30 px-4 py-2.5 text-center text-xs text-[#E7C96F]">
+          <div className="bg-[#111114] border-b border-[#F5C542]/30 px-4 py-2.5 text-center text-xs text-[#F5C542]">
             {maintenanceNotice}
           </div>
         )}
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">{children}</div>
+        <div className="max-w-5xl mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6">{children}</div>
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
       <nav
         aria-label="Mobile navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-30 h-16 bg-[#0A0A0C]/95 backdrop-blur-xl border-t border-white/[0.08] grid grid-cols-5 items-center"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B0B0E]/95 backdrop-blur-xl border-t border-[#F5C542]/25 shadow-[0_-8px_30px_rgba(0,0,0,0.85)] pb-[env(safe-area-inset-bottom)]"
       >
-        {mobileTabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeView === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onNavigate(tab.id)}
-              className={`min-h-[44px] flex flex-col items-center justify-center gap-1 transition-colors ${
-                isActive ? 'text-[#D4AF37]' : 'text-[#A1A1AA]'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium tracking-tight">{tab.label}</span>
-            </button>
-          );
-        })}
+        <div className="grid grid-cols-5 items-center h-16 px-1">
+          {mobileTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeView === tab.id;
+
+            if (tab.id === 'create') {
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => onNavigate('create')}
+                  aria-label="Create"
+                  className="flex flex-col items-center justify-center -mt-4 min-h-[48px] focus-visible:outline-none group"
+                >
+                  <span className="w-12 h-12 rounded-full bg-gradient-to-br from-[#F8D162] via-[#F5C542] to-[#D99B19] text-[#050505] border-2 border-[#050505] ring-1 ring-[#F5C542]/60 shadow-[0_6px_22px_rgba(245,197,66,0.42)] flex items-center justify-center group-active:scale-95 transition-transform">
+                    <Plus className="w-6 h-6 stroke-[2.6]" />
+                  </span>
+                  <span
+                    className={`mt-0.5 text-[10px] font-semibold tracking-tight ${
+                      isActive ? 'text-[#F5C542]' : 'text-[#A5A5AD]'
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            }
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onNavigate(tab.id)}
+                className={`relative min-h-[48px] flex flex-col items-center justify-center gap-1 transition-colors ${
+                  isActive ? 'text-[#F5C542]' : 'text-[#A5A5AD] hover:text-[#FFFFFF]'
+                }`}
+              >
+                {isActive && (
+                  <span
+                    className="absolute top-0 w-7 h-0.5 rounded-full bg-[#F5C542] shadow-[0_0_8px_rgba(245,197,66,0.7)]"
+                    aria-hidden="true"
+                  />
+                )}
+                <Icon className="w-5 h-5" />
+                <span className="text-[10px] font-semibold tracking-tight">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </nav>
     </div>
   );

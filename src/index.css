@@ -25,37 +25,41 @@
     font-family: var(--font-display);
   }
 
+  .font-script {
+    font-family: "Great Vibes", cursive;
+  }
+
   /* Custom refined scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #0A0A0C;
+    background: #050505;
   }
   ::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.12);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(212, 175, 55, 0.4);
+    background: rgba(245, 197, 66, 0.45);
   }
 }
 
 .glass-surface {
-  background: rgba(21, 21, 25, 0.78);
+  background: rgba(16, 16, 16, 0.82);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .gold-gradient-btn {
-  background: linear-gradient(135deg, #E7C96F 0%, #D4AF37 55%, #B58F22 100%);
-  color: #0A0A0C;
+  background: linear-gradient(135deg, #F5C542 0%, #E5B22C 55%, #D99B19 100%);
+  color: #050505;
 }
 
 .gold-gradient-btn:hover {
-  background: linear-gradient(135deg, #F0D685 0%, #DFBC46 55%, #C49C2B 100%);
+  background: linear-gradient(135deg, #F8D162 0%, #F0BE38 55%, #E3A724 100%);
 }
 
 .tabular-nums {
