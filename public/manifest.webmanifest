@@ -13,19 +13,19 @@
   "categories": ["social", "education"],
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "icons/file_00000000780481f88f8d88ebf4844bdb.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "icons/file_00000000780481f88f8d88ebf4844bdb.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "icons/file_00000000780481f88f8d88ebf4844bdb.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
