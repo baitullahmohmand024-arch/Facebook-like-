@@ -130,7 +130,7 @@ try {
     const badge = data.badge || '/icons/icon-192.png';
     const tag = data.tag || data.notificationId || `hf-${Date.now()}`;
 
-    self.registration.showNotification(title, {
+    return self.registration.showNotification(title, {
       body,
       icon,
       badge,
@@ -162,12 +162,13 @@ self.addEventListener('notificationclick', (event) => {
 
       for (const client of clientsList) {
         if (client.url.startsWith(self.location.origin)) {
-          client.postMessage({
+          const focused = await client.focus().catch(() => client);
+          focused.postMessage({
             type: 'HOSTEL_FRIEND_NOTIFICATION_CLICK',
             actionUrl,
             data: payloadData,
           });
-          return client.focus();
+          return focused;
         }
       }
 

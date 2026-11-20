@@ -27,7 +27,13 @@ import {
   markNotificationRead,
   normalizeNotificationType,
   respondToFriendRequest,
+  updateNotificationPreferences,
 } from '../services/notificationService';
+import {
+  getBrowserNotificationPermission,
+  getPushSupportState,
+  PushSupportState,
+} from '../services/fcmService';
 import { Avatar } from '../components/Avatar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { formatRelativeTime } from '../utils/formatters';
@@ -87,11 +93,15 @@ export function NotificationsPage({
   const [busyRequestIds, setBusyRequestIds] = useState<Set<string>>(new Set());
   const [enablingPush, setEnablingPush] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<NotificationItem | null>(null);
+  const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>(
+    () => getBrowserNotificationPermission()
+  );
+  const [pushSupport, setPushSupport] = useState<PushSupportState>('supported');
 
-  const browserPermission =
-    typeof window !== 'undefined' && 'Notification' in window
-      ? Notification.permission
-      : 'unsupported';
+  useEffect(() => {
+    setBrowserPermission(getBrowserNotificationPermission());
+    void getPushSupportState().then(setPushSupport);
+  }, []);
 
   const filteredItems = useMemo(() => {
     return notifications.filter((item) => {
@@ -237,8 +247,13 @@ export function NotificationsPage({
     setEnablingPush(true);
     try {
       const res = await enablePushNotifications();
+      setBrowserPermission(getBrowserNotificationPermission());
+      void getPushSupportState().then(setPushSupport);
       if (res.ok) {
-        if (notificationPreferences) {
+        if (profile) {
+          const updated = await updateNotificationPreferences(profile.uid, { pushEnabled: true });
+          setNotificationPreferences(updated);
+        } else if (notificationPreferences) {
           setNotificationPreferences({ ...notificationPreferences, pushEnabled: true });
         }
         showToast({ type: 'success', title: 'Push notifications enabled for this device' });
@@ -304,7 +319,7 @@ export function NotificationsPage({
       </div>
 
       {/* Optional Push Prompt Card */}
-      {browserPermission === 'default' && (
+      {browserPermission === 'default' && pushSupport === 'supported' && (
         <div className="rounded-2xl bg-[#111114] border border-[#F5C542]/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#F5C542]/15 border border-[#F5C542]/35 flex items-center justify-center shrink-0">

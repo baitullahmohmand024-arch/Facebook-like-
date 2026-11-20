@@ -331,7 +331,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!authReady || !firebaseUser || !profile) return;
 
     const permission = getBrowserNotificationPermission();
-    if (permission === 'granted' && notificationPreferences?.pushEnabled !== false) {
+    if (permission === 'granted' && notificationPreferences?.pushEnabled === true) {
       void registerFcmTokenForUser(firebaseUser.uid, false);
     }
 

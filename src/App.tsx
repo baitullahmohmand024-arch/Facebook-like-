@@ -82,7 +82,9 @@ function HostelverseRouter() {
     }
 
     if (targetView === 'notifications') {
-      setNotificationsInitialTab(tabParam === 'requests' ? 'requests' : 'all');
+      setNotificationsInitialTab(
+        tabParam === 'requests' ? 'requests' : tabParam === 'unread' ? 'unread' : 'all'
+      );
       setView('notifications');
     }
   }, []);
@@ -105,13 +107,32 @@ function HostelverseRouter() {
     }
   }, [authReady, firebaseUser, profile, needsVerification, needsOnboarding, applyDeepLink, view]);
 
-  // Listen for push notification click messages sent by the unified service worker
+  // Listen for push notification click messages sent by the unified service worker or FCM SW
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const onSwMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; actionUrl?: string } | undefined;
-      if (data?.type === 'HOSTEL_FRIEND_NOTIFICATION_CLICK' && data.actionUrl) {
-        applyDeepLink(data.actionUrl);
+      const payload = event.data as
+        | {
+            type?: string;
+            actionUrl?: string;
+            isFirebaseMessaging?: boolean;
+            messageType?: string;
+            data?: { actionUrl?: string };
+            fcmOptions?: { link?: string };
+          }
+        | undefined;
+      if (!payload) return;
+
+      if (payload.type === 'HOSTEL_FRIEND_NOTIFICATION_CLICK' && payload.actionUrl) {
+        applyDeepLink(payload.actionUrl);
+        return;
+      }
+
+      if (payload.isFirebaseMessaging && payload.messageType === 'notification-clicked') {
+        const link = payload.fcmOptions?.link || payload.data?.actionUrl;
+        if (link) {
+          applyDeepLink(link);
+        }
       }
     };
     navigator.serviceWorker.addEventListener('message', onSwMessage);

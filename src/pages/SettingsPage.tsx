@@ -216,6 +216,7 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
       if (nextEnabled) {
         const res = await enablePushNotifications();
         setBrowserPerm(getBrowserNotificationPermission());
+        void getPushSupportState().then(setPushSupport);
         if (!res.ok) {
           showToast({
             type: 'info',
@@ -231,6 +232,7 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
         await unregisterCurrentFcmToken(profile.uid);
         const updated = await updateNotificationPreferences(profile.uid, { pushEnabled: false });
         setNotificationPreferences(updated);
+        setBrowserPerm(getBrowserNotificationPermission());
         showToast({ type: 'info', title: 'Push notifications disabled on this device' });
       }
     } catch {
@@ -498,7 +500,7 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
                   {pushSupport === 'ios-needs-install'
                     ? 'On iPhone/iPad Safari, add Hostel Friend to your Home Screen first (iOS 16.4+) to enable push alerts.'
                     : pushSupport === 'missing-vapid'
-                    ? 'In-app alerts are active. Add VITE_FIREBASE_VAPID_KEY to finish activating background Web Push.'
+                    ? 'In-app alerts are active. Set VITE_FIREBASE_VAPID_KEY in Vercel & redeploy to activate background Web Push.'
                     : pushSupport === 'unsupported-browser'
                     ? 'Your current browser or embedded preview frame blocks PushManager.'
                     : browserPerm === 'denied'
@@ -513,14 +515,20 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
               <span className="text-xs text-[#A1A1AA]">
                 {pushBusy
                   ? 'Updating...'
-                  : notificationPreferences?.pushEnabled && browserPerm === 'granted'
+                  : notificationPreferences?.pushEnabled &&
+                    browserPerm === 'granted' &&
+                    pushSupport === 'supported'
                   ? 'Enabled'
                   : 'Off'}
               </span>
               <input
                 type="checkbox"
                 disabled={pushBusy}
-                checked={Boolean(notificationPreferences?.pushEnabled && browserPerm === 'granted')}
+                checked={Boolean(
+                  notificationPreferences?.pushEnabled &&
+                    browserPerm === 'granted' &&
+                    pushSupport === 'supported'
+                )}
                 onChange={(e) => void handleTogglePushNotifications(e.target.checked)}
                 className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
               />
