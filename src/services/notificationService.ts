@@ -526,7 +526,7 @@ export async function getFriendRequestBetween(
   }
 }
 
-export function subscribeIncomingFriendRequests(
+export function subscribeAllFriendRequests(
   uid: string,
   callback: (requests: FriendRequest[]) => void
 ): Unsubscribe {
@@ -538,11 +538,10 @@ export function subscribeIncomingFriendRequests(
   return onSnapshot(
     q,
     (snapshot) => {
-      const pending = snapshot.docs
+      const all = snapshot.docs
         .map((d) => d.data() as FriendRequest)
-        .filter((r) => r.recipientId === uid && r.status === 'pending')
         .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-      callback(pending);
+      callback(all);
     },
     () => {
       callback([]);
@@ -550,9 +549,18 @@ export function subscribeIncomingFriendRequests(
   );
 }
 
+export function subscribeIncomingFriendRequests(
+  uid: string,
+  callback: (requests: FriendRequest[]) => void
+): Unsubscribe {
+  return subscribeAllFriendRequests(uid, (all) => {
+    callback(all.filter((r) => r.recipientId === uid && r.status === 'pending'));
+  });
+}
+
 export async function sendFriendRequest(
   sender: UserProfile,
-  recipient: UserProfile
+  recipient: Pick<UserProfile, 'uid' | 'username' | 'fullName' | 'avatarUrl'>
 ): Promise<FriendRequest> {
   if (sender.uid === recipient.uid) {
     throw new Error('You cannot send a friend request to yourself.');

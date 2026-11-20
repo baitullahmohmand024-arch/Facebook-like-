@@ -17,6 +17,14 @@ import {
 import { CommentItem, Post, UserProfile } from '../types';
 import { formatCount, formatRelativeTime } from '../utils/formatters';
 import { addComment, deleteComment, fetchComments } from '../services/postService';
+import {
+  cancelOrRemoveFriendRequest,
+  getFriendRequestId,
+  respondToFriendRequest,
+  sendFriendRequest,
+} from '../services/notificationService';
+import { followUser, unfollowUser } from '../services/userService';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -59,7 +67,9 @@ export function PostCard({
   highlightCommentId,
 }: PostCardProps) {
   const { showToast } = useToast();
+  const { followingIds, friendRequests } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [followActionBusy, setFollowActionBusy] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(initialCommentsOpen);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -189,6 +199,95 @@ export function PostCard({
   };
 
   const canDelete = Boolean(currentUser && (currentUser.uid === post.authorId || isAdmin));
+  const showAuthorFollowControl = !currentUser || currentUser.uid !== post.authorId;
+  const isFollowingAuthor = Boolean(currentUser && followingIds.has(post.authorId));
+  const relationRequest = currentUser
+    ? friendRequests.find((r) => r.id === getFriendRequestId(currentUser.uid, post.authorId))
+    : undefined;
+
+  const followStatus:
+    | 'follow'
+    | 'requested'
+    | 'incoming'
+    | 'friends'
+    | 'following' = !currentUser
+    ? 'follow'
+    : relationRequest?.status === 'accepted'
+    ? 'friends'
+    : relationRequest?.status === 'pending'
+    ? relationRequest.senderId === currentUser.uid
+      ? 'requested'
+      : 'incoming'
+    : isFollowingAuthor
+    ? 'following'
+    : 'follow';
+
+  const followButtonLabel =
+    followStatus === 'friends'
+      ? 'Friends'
+      : followStatus === 'requested'
+      ? 'Requested'
+      : followStatus === 'incoming'
+      ? 'Add Friend'
+      : followStatus === 'following'
+      ? 'Following'
+      : 'Follow';
+
+  const handleAuthorFollowClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUser) {
+      onRequireAuth?.();
+      return;
+    }
+    if (currentUser.uid === post.authorId || followActionBusy) return;
+    if (followStatus === 'friends') {
+      onOpenProfile(post.authorId);
+      return;
+    }
+
+    setFollowActionBusy(true);
+    try {
+      if (followStatus === 'incoming' && relationRequest) {
+        await respondToFriendRequest(relationRequest, currentUser, 'accepted');
+        if (!isFollowingAuthor) {
+          await followUser(currentUser, post.authorId, { skipNotification: true }).catch(() => {});
+        }
+        playSound('follow');
+        showToast({ type: 'success', title: `You and ${post.authorName} are now friends` });
+      } else if (followStatus === 'requested' && relationRequest) {
+        await cancelOrRemoveFriendRequest(relationRequest.id);
+        if (isFollowingAuthor) {
+          await unfollowUser(currentUser.uid, post.authorId).catch(() => {});
+        }
+        playSound('unlike');
+        showToast({ type: 'info', title: 'Follow request cancelled' });
+      } else if (followStatus === 'following') {
+        await unfollowUser(currentUser.uid, post.authorId);
+        playSound('unlike');
+        showToast({ type: 'info', title: `Unfollowed ${post.authorName}` });
+      } else {
+        if (!isFollowingAuthor) {
+          await followUser(currentUser, post.authorId, { skipNotification: true });
+        }
+        await sendFriendRequest(currentUser, {
+          uid: post.authorId,
+          username: post.authorUsername,
+          fullName: post.authorName,
+          avatarUrl: post.authorAvatarUrl,
+        });
+        playSound('follow');
+        showToast({ type: 'success', title: `Follow request sent to ${post.authorName}` });
+      }
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Could not update follow request',
+        description: formatUserFriendlyError(err),
+      });
+    } finally {
+      setFollowActionBusy(false);
+    }
+  };
 
   const aspectClass =
     post.aspectRatio === 'square'
@@ -204,25 +303,51 @@ export function PostCard({
       <article className="bg-[#111114] border border-[#F5C542]/25 hover:border-[#F5C542]/45 rounded-2xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.55)] transition-all duration-200">
         {/* Post Author Header */}
         <div className="px-4 sm:px-5 pt-4 pb-3 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => onOpenProfile(post.authorId)}
-            className="flex items-center gap-3 text-left group min-w-0"
-          >
-            <div className="rounded-full p-[1.5px] bg-gradient-to-tr from-[#D99B19]/70 via-[#F5C542]/80 to-[#F8D162]/60 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => onOpenProfile(post.authorId)}
+              aria-label={`View ${post.authorName}'s profile`}
+              className="rounded-full p-[1.5px] bg-gradient-to-tr from-[#D99B19]/70 via-[#F5C542]/80 to-[#F8D162]/60 shrink-0"
+            >
               <Avatar src={post.authorAvatarUrl} name={post.authorName} size="md" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[15px] font-display font-semibold text-[#FFFFFF] group-hover:text-[#F5C542] transition-colors truncate">
-                {post.authorName}
-              </p>
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => onOpenProfile(post.authorId)}
+                  className="text-[15px] font-display font-semibold text-[#FFFFFF] hover:text-[#F5C542] transition-colors truncate"
+                >
+                  {post.authorName}
+                </button>
+                {showAuthorFollowControl && (
+                  <>
+                    <span className="text-[#A5A5AD]/60 text-xs shrink-0" aria-hidden="true">
+                      ·
+                    </span>
+                    <button
+                      type="button"
+                      disabled={followActionBusy}
+                      onClick={handleAuthorFollowClick}
+                      className={`text-xs font-semibold shrink-0 whitespace-nowrap transition-colors disabled:opacity-50 ${
+                        followStatus === 'follow' || followStatus === 'incoming'
+                          ? 'text-[#F5C542] hover:text-[#F8D162]'
+                          : 'text-[#A5A5AD] hover:text-[#FFFFFF]'
+                      }`}
+                    >
+                      {followActionBusy ? '...' : followButtonLabel}
+                    </button>
+                  </>
+                )}
+              </div>
               <div className="flex items-center gap-1.5 text-xs text-[#A5A5AD] truncate">
                 <span className="truncate">@{post.authorUsername}</span>
                 <span aria-hidden="true">·</span>
                 <span className="shrink-0">{formatRelativeTime(post.createdAt)}</span>
               </div>
             </div>
-          </button>
+          </div>
 
           <div className="relative" ref={menuRef}>
             <button
@@ -599,23 +724,51 @@ export function PostCard({
     <article className="bg-[#151519] border border-white/[0.08] hover:border-white/[0.14] rounded-2xl overflow-hidden transition-colors duration-200">
       {/* Header */}
       <div className="px-5 py-4 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => onOpenProfile(post.authorId)}
-          className="flex items-center gap-3 text-left group min-w-0"
-        >
-          <Avatar src={post.authorAvatarUrl} name={post.authorName} size="md" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[#F8F9FA] group-hover:text-[#D4AF37] transition-colors truncate">
-              {post.authorName}
-            </p>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onOpenProfile(post.authorId)}
+            aria-label={`View ${post.authorName}'s profile`}
+            className="shrink-0"
+          >
+            <Avatar src={post.authorAvatarUrl} name={post.authorName} size="md" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => onOpenProfile(post.authorId)}
+                className="text-sm font-semibold text-[#F8F9FA] hover:text-[#D4AF37] transition-colors truncate"
+              >
+                {post.authorName}
+              </button>
+              {showAuthorFollowControl && (
+                <>
+                  <span className="text-[#A1A1AA]/60 text-xs shrink-0" aria-hidden="true">
+                    ·
+                  </span>
+                  <button
+                    type="button"
+                    disabled={followActionBusy}
+                    onClick={handleAuthorFollowClick}
+                    className={`text-xs font-semibold shrink-0 whitespace-nowrap transition-colors disabled:opacity-50 ${
+                      followStatus === 'follow' || followStatus === 'incoming'
+                        ? 'text-[#D4AF37] hover:text-[#F5C542]'
+                        : 'text-[#A1A1AA] hover:text-[#F8F9FA]'
+                    }`}
+                  >
+                    {followActionBusy ? '...' : followButtonLabel}
+                  </button>
+                </>
+              )}
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-[#A1A1AA] truncate">
-              <span>@{post.authorUsername}</span>
+              <span className="truncate">@{post.authorUsername}</span>
               <span aria-hidden="true">·</span>
-              <span>{formatRelativeTime(post.createdAt)}</span>
+              <span className="shrink-0">{formatRelativeTime(post.createdAt)}</span>
             </div>
           </div>
-        </button>
+        </div>
 
         <div className="relative" ref={menuRef}>
           <button

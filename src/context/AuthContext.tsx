@@ -20,6 +20,7 @@ import {
   ensureUserPrivateSettings,
   getUserPrivateSettings,
   getUserProfile,
+  subscribeFollowingIds,
 } from '../services/userService';
 import { fetchPlatformSettings, subscribeConversations } from '../services/socialService';
 import {
@@ -27,7 +28,7 @@ import {
   getDefaultNotificationPreferences,
   getOrInitNotificationPreferences,
   isNotificationEnabledForPreferences,
-  subscribeIncomingFriendRequests,
+  subscribeAllFriendRequests,
   subscribeNotificationsFeed,
 } from '../services/notificationService';
 import {
@@ -71,7 +72,9 @@ interface AuthContextValue {
   notificationsError: string | null;
   hasMoreNotifications: boolean;
   loadingMoreNotifications: boolean;
+  friendRequests: FriendRequest[];
   incomingFriendRequests: FriendRequest[];
+  followingIds: Set<string>;
   unreadNotifications: number;
   unreadMessages: number;
   pendingDraft: PendingOnboardingDraft | null;
@@ -142,7 +145,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [notifRefreshTick, setNotifRefreshTick] = useState(0);
 
-  const [incomingFriendRequests, setIncomingFriendRequests] = useState<FriendRequest[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [unreadMessages, setUnreadMessages] = useState(0);
 
   const seenNotifIdsRef = useRef<Set<string>>(new Set());
@@ -235,7 +239,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsAdmin(false);
         setRealtimeNotifications([]);
         setOlderNotifications([]);
-        setIncomingFriendRequests([]);
+        setFriendRequests([]);
+        setFollowingIds(new Set());
         setUnreadMessages(0);
       }
       setAuthReady(true);
@@ -252,7 +257,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       prevUnreadMsgsRef.current = null;
       setRealtimeNotifications([]);
       setOlderNotifications([]);
-      setIncomingFriendRequests([]);
+      setFriendRequests([]);
+      setFollowingIds(new Set());
       setNotificationsLoading(false);
       setNotificationsError(null);
       return;
@@ -299,12 +305,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    const unsubFriendRequests = subscribeIncomingFriendRequests(
+    const unsubFriendRequests = subscribeAllFriendRequests(
       firebaseUser.uid,
       (requests) => {
-        setIncomingFriendRequests(requests);
+        setFriendRequests(requests);
       }
     );
+
+    const unsubFollowing = subscribeFollowingIds(firebaseUser.uid, (ids) => {
+      setFollowingIds(new Set(ids));
+    });
 
     const unsubConvs = subscribeConversations(firebaseUser.uid, (convs) => {
       const totalUnread = convs.reduce((acc, c) => {
@@ -322,6 +332,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       unsubNotifs();
       unsubFriendRequests();
+      unsubFollowing();
       unsubConvs();
     };
   }, [authReady, firebaseUser, profile, notifRefreshTick]);
@@ -382,6 +393,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)
     );
   }, [realtimeNotifications, olderNotifications]);
+
+  const incomingFriendRequests = useMemo(() => {
+    const uid = firebaseUser?.uid;
+    if (!uid) return [];
+    return friendRequests.filter((r) => r.recipientId === uid && r.status === 'pending');
+  }, [friendRequests, firebaseUser?.uid]);
 
   const unreadNotifications = useMemo(() => {
     return notifications.filter(
@@ -541,7 +558,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPendingDraft(null);
     setRealtimeNotifications([]);
     setOlderNotifications([]);
-    setIncomingFriendRequests([]);
+    setFriendRequests([]);
+    setFollowingIds(new Set());
     await signOut(auth);
   };
 
@@ -566,7 +584,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         notificationsError,
         hasMoreNotifications,
         loadingMoreNotifications,
+        friendRequests,
         incomingFriendRequests,
+        followingIds,
         unreadNotifications,
         unreadMessages,
         pendingDraft,

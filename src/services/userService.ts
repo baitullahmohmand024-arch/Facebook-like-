@@ -6,10 +6,12 @@ import {
   getDocs,
   increment,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  Unsubscribe,
   updateDoc,
   where,
   writeBatch,
@@ -283,7 +285,11 @@ export async function updateUserPrivateSettings(
   }
 }
 
-export async function followUser(actor: UserProfile, targetUid: string): Promise<void> {
+export async function followUser(
+  actor: UserProfile,
+  targetUid: string,
+  options?: { skipNotification?: boolean }
+): Promise<void> {
   if (actor.uid === targetUid) return;
   const followId = `${actor.uid}_${targetUid}`;
   const batch = writeBatch(db);
@@ -303,7 +309,7 @@ export async function followUser(actor: UserProfile, targetUid: string): Promise
     updatedAt: serverTimestamp(),
   });
 
-  if (!shouldSkipDedupeKey(`follow:${actor.uid}:${targetUid}`)) {
+  if (!options?.skipNotification && !shouldSkipDedupeKey(`follow:${actor.uid}:${targetUid}`)) {
     const notifRef = doc(collection(db, 'notifications'));
     batch.set(
       notifRef,
@@ -356,6 +362,22 @@ export async function getFollowingIds(uid: string): Promise<string[]> {
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'follows');
   }
+}
+
+export function subscribeFollowingIds(
+  uid: string,
+  callback: (followingIds: string[]) => void
+): Unsubscribe {
+  const q = query(collection(db, 'follows'), where('followerId', '==', uid));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      callback(snapshot.docs.map((d) => d.data().followingId as string));
+    },
+    () => {
+      callback([]);
+    }
+  );
 }
 
 export async function isFollowingUser(myUid: string, targetUid: string): Promise<boolean> {

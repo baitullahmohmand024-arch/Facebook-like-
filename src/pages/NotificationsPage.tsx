@@ -224,6 +224,12 @@ export function NotificationsPage({
     setBusyRequestIds((prev) => new Set(prev).add(req.id));
     try {
       await respondToFriendRequest(req, profile, decision);
+      const matchingNotifs = notifications.filter(
+        (n) => !n.isRead && n.relatedRequestId === req.id
+      );
+      if (matchingNotifs.length > 0) {
+        await Promise.all(matchingNotifs.map((n) => markNotificationRead(n.id).catch(() => {})));
+      }
       playSound(decision === 'accepted' ? 'follow' : 'ui-tap');
       showToast({
         type: 'success',
@@ -426,8 +432,8 @@ export function NotificationsPage({
                       onClick={() => handleFriendDecision(req, 'accepted')}
                       className="gold-gradient-btn px-3.5 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
                     >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Accept</span>
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Add Friend</span>
                     </button>
                     <button
                       type="button"
@@ -475,19 +481,21 @@ export function NotificationsPage({
           ))}
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="bg-[#111114] border border-[#F5C542]/20 rounded-2xl p-10 sm:p-12 text-center shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
-          <div className="w-12 h-12 rounded-2xl bg-[#F5C542]/12 border border-[#F5C542]/30 flex items-center justify-center mx-auto">
-            <Bell className="w-6 h-6 text-[#F5C542]" />
+        (tab === 'all' || tab === 'requests') && incomingFriendRequests.length > 0 ? null : (
+          <div className="bg-[#111114] border border-[#F5C542]/20 rounded-2xl p-10 sm:p-12 text-center shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+            <div className="w-12 h-12 rounded-2xl bg-[#F5C542]/12 border border-[#F5C542]/30 flex items-center justify-center mx-auto">
+              <Bell className="w-6 h-6 text-[#F5C542]" />
+            </div>
+            <h2 className="mt-4 font-display text-lg font-semibold text-[#FFFFFF]">
+              {tab === 'unread' ? 'No unread notifications' : 'All caught up'}
+            </h2>
+            <p className="mt-1.5 text-sm text-[#A5A5AD] max-w-md mx-auto">
+              {tab === 'requests'
+                ? 'Incoming friend requests and accepted connections will appear here.'
+                : 'Messages, likes, comments, replies, follows, friend requests, and @mentions will show up here in real time.'}
+            </p>
           </div>
-          <h2 className="mt-4 font-display text-lg font-semibold text-[#FFFFFF]">
-            {tab === 'unread' ? 'No unread notifications' : 'All caught up'}
-          </h2>
-          <p className="mt-1.5 text-sm text-[#A5A5AD] max-w-md mx-auto">
-            {tab === 'requests'
-              ? 'Incoming friend requests and accepted connections will appear here.'
-              : 'Messages, likes, comments, replies, follows, friend requests, and @mentions will show up here in real time.'}
-          </p>
-        </div>
+        )
       ) : (
         <div className="space-y-2.5">
           <div className="bg-[#111114] border border-white/[0.08] rounded-2xl divide-y divide-white/[0.06] overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
