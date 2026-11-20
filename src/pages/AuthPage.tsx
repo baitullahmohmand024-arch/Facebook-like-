@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Mail, RefreshCw, ShieldCheck, Upload } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Image as ImageIcon,
+  Mail,
+  RefreshCw,
+  ShieldCheck,
+  Upload,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { checkUsernameAvailable } from '../services/userService';
@@ -47,7 +55,9 @@ export function AuthPage({
   const [avatarUrl, setAvatarUrl] = useState(
     pendingDraft?.avatarUrl || firebaseUser?.photoURL || ''
   );
+  const [coverUrl, setCoverUrl] = useState(pendingDraft?.coverUrl || '');
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
 
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [loading, setLoading] = useState(false);
@@ -276,6 +286,7 @@ export function AuthPage({
         username: cleanUsername,
         hostel,
         avatarUrl,
+        coverUrl,
       });
       showToast({ type: 'success', title: 'Profile created', description: 'Welcome to Hostel Friend.' });
       onAuthenticated();
@@ -291,7 +302,7 @@ export function AuthPage({
     if (!file || !firebaseUser) return;
     const validation = validateMediaFile(file, platformSettings.maxUploadSizeMB);
     if (!validation.valid || validation.mediaType !== 'image') {
-      setErrorMsg(validation.error || 'Please choose an image file.');
+      setErrorMsg(validation.error || 'Please choose an image file from your gallery.');
       return;
     }
     setAvatarUploading(true);
@@ -299,11 +310,32 @@ export function AuthPage({
     try {
       const url = await uploadMediaFile(file, 'avatars', firebaseUser.uid);
       setAvatarUrl(url);
-      showToast({ type: 'success', title: 'Profile picture uploaded' });
+      showToast({ type: 'success', title: 'Profile picture ready' });
     } catch (err) {
       setErrorMsg(formatUserFriendlyError(err, 'Avatar upload failed.'));
     } finally {
       setAvatarUploading(false);
+    }
+  };
+
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !firebaseUser) return;
+    const validation = validateMediaFile(file, platformSettings.maxUploadSizeMB);
+    if (!validation.valid || validation.mediaType !== 'image') {
+      setErrorMsg(validation.error || 'Please choose an image file from your gallery.');
+      return;
+    }
+    setCoverUploading(true);
+    setErrorMsg('');
+    try {
+      const url = await uploadMediaFile(file, 'covers', firebaseUser.uid);
+      setCoverUrl(url);
+      showToast({ type: 'success', title: 'Cover photo ready' });
+    } catch (err) {
+      setErrorMsg(formatUserFriendlyError(err, 'Cover upload failed.'));
+    } finally {
+      setCoverUploading(false);
     }
   };
 
@@ -519,15 +551,28 @@ export function AuthPage({
 
             <div>
               <span className="block text-xs font-medium text-[#A1A1AA] mb-1.5">
-                Profile Picture (optional)
+                Profile Picture (from Gallery · optional)
               </span>
               <div className="flex items-center gap-3">
-                <label className="cursor-pointer px-3.5 py-2 rounded-xl border border-white/10 text-xs font-medium text-[#F8F9FA] hover:bg-white/[0.04] flex items-center gap-2">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt="Profile preview"
+                    referrerPolicy="no-referrer"
+                    className="w-11 h-11 rounded-full object-cover border border-[#D4AF37]/50 shrink-0"
+                  />
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-[#0A0A0C] border border-white/15 flex items-center justify-center text-xs font-bold text-[#D4AF37] shrink-0">
+                    {(fullName || 'H').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <label className="cursor-pointer px-3.5 py-2 rounded-xl border border-white/10 text-xs font-medium text-[#F8F9FA] hover:border-[#D4AF37]/50 hover:bg-white/[0.04] flex items-center gap-2 transition-colors">
                   <Upload className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>{avatarUploading ? 'Uploading...' : 'Upload Photo'}</span>
+                  <span>{avatarUploading ? 'Uploading...' : 'Select Profile Picture'}</span>
                   <input
                     type="file"
                     accept="image/jpeg, image/png, image/webp"
+                    disabled={avatarUploading}
                     onChange={handleAvatarUpload}
                     className="hidden"
                   />
@@ -539,11 +584,47 @@ export function AuthPage({
                 )}
               </div>
             </div>
+
+            <div>
+              <span className="block text-xs font-medium text-[#A1A1AA] mb-1.5">
+                Cover Photo (from Gallery · optional)
+              </span>
+              <div className="space-y-2">
+                {coverUrl && (
+                  <div className="h-24 w-full rounded-xl overflow-hidden border border-[#D4AF37]/40 bg-[#0A0A0C]">
+                    <img
+                      src={coverUrl}
+                      alt="Cover preview"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <label className="cursor-pointer px-3.5 py-2 rounded-xl border border-white/10 text-xs font-medium text-[#F8F9FA] hover:border-[#D4AF37]/50 hover:bg-white/[0.04] flex items-center gap-2 transition-colors">
+                    <ImageIcon className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span>{coverUploading ? 'Uploading...' : 'Select Cover Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg, image/png, image/webp"
+                      disabled={coverUploading}
+                      onChange={handleCoverUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  {coverUrl && (
+                    <span className="text-xs text-[#D4AF37] flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Ready
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           <button
             type="submit"
-            disabled={loading || avatarUploading || usernameStatus === 'taken'}
+            disabled={loading || avatarUploading || coverUploading || usernameStatus === 'taken'}
             className="mt-6 w-full gold-gradient-btn py-2.5 px-4 rounded-xl text-sm font-semibold disabled:opacity-50"
           >
             {loading ? 'Finishing Account Setup...' : 'Complete Account Setup'}

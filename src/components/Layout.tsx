@@ -132,8 +132,8 @@ export function Layout({
                   <span className="hidden lg:inline text-sm font-medium truncate">{item.label}</span>
                 </span>
                 {typeof item.count === 'number' && item.count > 0 && (
-                  <span className="hidden lg:inline font-mono text-xs tabular-nums text-[#F5C542] font-semibold">
-                    {item.count}
+                  <span className="hidden lg:inline-flex min-w-[20px] h-5 px-1.5 rounded-full bg-[#F5C542]/15 border border-[#F5C542]/35 font-mono text-[11px] tabular-nums text-[#F5C542] font-semibold items-center justify-center">
+                    {item.count > 99 ? '99+' : item.count}
                   </span>
                 )}
               </button>

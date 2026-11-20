@@ -35,6 +35,20 @@ export interface UserProfile {
   updatedAt: Timestamp | null;
 }
 
+export interface StoryItem {
+  id: string;
+  authorId: string;
+  authorUsername: string;
+  authorName: string;
+  authorAvatarUrl: string;
+  mediaUrl: string;
+  mediaType: 'image' | 'video';
+  caption: string;
+  visibility: 'public';
+  createdAt: Timestamp | null;
+  expiresAt: Timestamp | null;
+}
+
 export interface UserPrivateSettings {
   uid: string;
   email: string;
@@ -75,22 +89,90 @@ export interface CommentItem {
   authorName: string;
   authorAvatarUrl: string;
   text: string;
+  parentCommentId?: string;
+  replyToUserId?: string;
+  replyToUsername?: string;
   isPublic: boolean;
   createdAt: Timestamp | null;
 }
+
+export type NotificationType =
+  | 'NEW_MESSAGE'
+  | 'POST_LIKE'
+  | 'POST_COMMENT'
+  | 'COMMENT_REPLY'
+  | 'NEW_FOLLOWER'
+  | 'FRIEND_REQUEST'
+  | 'FRIEND_REQUEST_ACCEPTED'
+  | 'USER_MENTION'
+  | 'IMPORTANT_APP_ANNOUNCEMENT'
+  | 'like'
+  | 'comment'
+  | 'follow'
+  | 'mention'
+  | 'system';
 
 export interface NotificationItem {
   id: string;
   recipientId: string;
   actorId: string;
+  senderId?: string;
   actorUsername: string;
   actorName: string;
   actorAvatarUrl: string;
-  type: 'like' | 'comment' | 'follow' | 'mention' | 'system';
+  type: NotificationType;
+  title?: string;
+  body?: string;
   postId: string;
+  relatedPostId?: string;
+  relatedCommentId?: string;
+  relatedConversationId?: string;
+  relatedMessageId?: string;
+  relatedRequestId?: string;
+  actionUrl?: string;
   message: string;
   isRead: boolean;
   createdAt: Timestamp | null;
+}
+
+export interface FriendRequest {
+  id: string;
+  senderId: string;
+  senderUsername: string;
+  senderName: string;
+  senderAvatarUrl: string;
+  recipientId: string;
+  recipientUsername: string;
+  recipientName: string;
+  recipientAvatarUrl: string;
+  participantIds: string[];
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
+}
+
+export interface NotificationPreferences {
+  uid: string;
+  messages: boolean;
+  likes: boolean;
+  comments: boolean;
+  commentReplies: boolean;
+  follows: boolean;
+  friendRequests: boolean;
+  mentions: boolean;
+  announcements: boolean;
+  pushEnabled: boolean;
+  updatedAt: Timestamp | null;
+}
+
+export interface FcmTokenRecord {
+  id: string;
+  uid: string;
+  token: string;
+  platform: 'web' | 'android-pwa' | 'ios-pwa';
+  userAgent: string;
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
 }
 
 export interface Conversation {

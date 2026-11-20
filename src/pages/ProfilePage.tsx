@@ -10,11 +10,12 @@ import {
   MessageSquare,
   UserCheck,
   UserPlus,
+  Users,
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Post, UserProfile } from '../types';
+import { FriendRequest, Post, UserProfile } from '../types';
 import {
   deletePost,
   fetchPostsByAuthor,
@@ -32,6 +33,12 @@ import {
   updateUserPrivateSettings,
   updateUserProfile,
 } from '../services/userService';
+import {
+  cancelOrRemoveFriendRequest,
+  getFriendRequestBetween,
+  respondToFriendRequest,
+  sendFriendRequest,
+} from '../services/notificationService';
 import { uploadMediaFile, validateMediaFile } from '../services/mediaService';
 import { Avatar } from '../components/Avatar';
 import { PostCard } from '../components/PostCard';
@@ -40,6 +47,7 @@ import { ReportModal } from '../components/ReportModal';
 import { formatCount, sanitizeUsername } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
 import { playSound } from '../utils/soundVfx';
+import defaultCoverImg from '../assets/images/default_cover_obsidian_1794541690832.jpg';
 
 interface ProfilePageProps {
   targetUserId: string;
@@ -49,7 +57,7 @@ interface ProfilePageProps {
   onRequireAuth: () => void;
 }
 
-const DEFAULT_COVER = '/src/assets/images/default_cover_obsidian_1794541690832.jpg';
+const DEFAULT_COVER = defaultCoverImg;
 
 export function ProfilePage({
   targetUserId,
@@ -76,6 +84,8 @@ export function ProfilePage({
   const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts');
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  const [friendRequest, setFriendRequest] = useState<FriendRequest | null>(null);
+  const [friendBusy, setFriendBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -106,16 +116,20 @@ export function ProfilePage({
       setPosts(authorPosts);
 
       if (currentUser) {
-        const [likes, saves, isFol] = await Promise.all([
+        const [likes, saves, isFol, fReq] = await Promise.all([
           getUserLikedPostIds(currentUser.uid),
           getUserSavedPostIds(currentUser.uid),
           currentUser.uid !== targetUserId
             ? isFollowingUser(currentUser.uid, targetUserId)
             : Promise.resolve(false),
+          currentUser.uid !== targetUserId
+            ? getFriendRequestBetween(currentUser.uid, targetUserId)
+            : Promise.resolve(null),
         ]);
         setLikedIds(likes);
         setSavedIds(saves);
         setFollowing(isFol);
+        setFriendRequest(fReq);
 
         if (currentUser.uid === targetUserId && saves.size > 0) {
           const recent = await fetchPostsPage(null, 50);
@@ -144,6 +158,48 @@ export function ProfilePage({
     setEditAvatarUrl(member.avatarUrl);
     setEditCoverUrl(member.coverUrl);
     setEditOpen(true);
+  };
+
+  const handleDirectMediaUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    folder: 'avatars' | 'covers'
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !currentUser || !member) return;
+    const validation = validateMediaFile(file, platformSettings.maxUploadSizeMB);
+    if (!validation.valid || validation.mediaType !== 'image') {
+      showToast({
+        type: 'error',
+        title: 'Invalid image',
+        description: validation.error || 'Please choose a JPEG, PNG, or WebP image from your gallery.',
+      });
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const url = await uploadMediaFile(file, folder, currentUser.uid);
+      const updated = await updateUserProfile(
+        currentUser.uid,
+        member.usernameLower,
+        folder === 'avatars' ? { avatarUrl: url } : { coverUrl: url }
+      );
+      setMember(updated);
+      setAuthProfile(updated);
+      playSound('upload-success');
+      showToast({
+        type: 'success',
+        title: folder === 'avatars' ? 'Profile picture updated' : 'Cover photo updated',
+      });
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Upload failed',
+        description: formatUserFriendlyError(err),
+      });
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleMediaUpload = async (
@@ -242,6 +298,65 @@ export function ProfilePage({
       showToast({ type: 'error', title: 'Could not update follow status' });
     } finally {
       setFollowBusy(false);
+    }
+  };
+
+  const handleSendFriendRequest = async () => {
+    if (!currentUser) {
+      onRequireAuth();
+      return;
+    }
+    if (!member || friendBusy) return;
+    setFriendBusy(true);
+    try {
+      const created = await sendFriendRequest(currentUser, member);
+      setFriendRequest(created);
+      playSound('follow');
+      showToast({ type: 'success', title: `Friend request sent to ${member.fullName}` });
+    } catch (err) {
+      showToast({
+        type: 'error',
+        title: 'Could not send friend request',
+        description: formatUserFriendlyError(err),
+      });
+    } finally {
+      setFriendBusy(false);
+    }
+  };
+
+  const handleCancelOrUnfriend = async () => {
+    if (!friendRequest || friendBusy) return;
+    setFriendBusy(true);
+    try {
+      await cancelOrRemoveFriendRequest(friendRequest.id);
+      const prevStatus = friendRequest.status;
+      setFriendRequest(null);
+      showToast({
+        type: 'info',
+        title: prevStatus === 'accepted' ? 'Removed from friends' : 'Friend request cancelled',
+      });
+    } catch {
+      showToast({ type: 'error', title: 'Could not update friend status' });
+    } finally {
+      setFriendBusy(false);
+    }
+  };
+
+  const handleRespondFriendRequest = async (decision: 'accepted' | 'declined') => {
+    if (!currentUser || !friendRequest || friendBusy) return;
+    setFriendBusy(true);
+    try {
+      await respondToFriendRequest(friendRequest, currentUser, decision);
+      setFriendRequest((prev) => (prev ? { ...prev, status: decision } : null));
+      playSound(decision === 'accepted' ? 'follow' : 'ui-tap');
+      showToast({
+        type: 'success',
+        title: decision === 'accepted' ? 'Friend request accepted' : 'Friend request declined',
+      });
+    } catch {
+      showToast({ type: 'error', title: 'Could not respond to friend request' });
+    } finally {
+      setFriendBusy(false);
     }
   };
 
@@ -351,13 +466,45 @@ export function ProfilePage({
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#151519] via-transparent to-black/20" />
+          {isOwnProfile && (
+            <label
+              aria-label="Choose cover photo from gallery"
+              className="cursor-pointer absolute bottom-3 right-3 z-20 px-3 py-1.5 rounded-full bg-black/75 hover:bg-black/90 border border-[#F5C542]/45 hover:border-[#F5C542] text-[11px] font-semibold text-[#FFFFFF] inline-flex items-center gap-1.5 backdrop-blur-sm shadow-lg transition-colors"
+            >
+              <Camera className="w-3.5 h-3.5 text-[#F5C542]" />
+              <span>{uploadingImage ? 'Uploading...' : member.coverUrl ? 'Change Cover' : 'Add Cover Photo'}</span>
+              <input
+                type="file"
+                accept="image/jpeg, image/png, image/webp"
+                disabled={uploadingImage}
+                onChange={(e) => handleDirectMediaUpload(e, 'covers')}
+                className="sr-only"
+              />
+            </label>
+          )}
         </div>
 
         <div className="px-6 pb-6 -mt-12 relative z-10">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
             <div className="flex items-end gap-4">
-              <div className="rounded-full p-1 bg-[#151519]">
+              <div className="relative rounded-full p-1 bg-[#151519]">
                 <Avatar src={member.avatarUrl} name={member.fullName} size="xl" />
+                {isOwnProfile && (
+                  <label
+                    aria-label="Choose profile picture from gallery"
+                    title="Upload Profile Picture"
+                    className="cursor-pointer absolute bottom-1 right-1 w-8 h-8 rounded-full bg-gradient-to-br from-[#F8D162] to-[#D99B19] text-[#050505] border-2 border-[#151519] flex items-center justify-center shadow-[0_2px_10px_rgba(245,197,66,0.45)] hover:scale-105 transition-transform"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <input
+                      type="file"
+                      accept="image/jpeg, image/png, image/webp"
+                      disabled={uploadingImage}
+                      onChange={(e) => handleDirectMediaUpload(e, 'avatars')}
+                      className="sr-only"
+                    />
+                  </label>
+                )}
               </div>
               <div className="pb-1">
                 <h1 className="font-display text-2xl font-bold text-[#F8F9FA] leading-tight">
@@ -403,14 +550,71 @@ export function ProfilePage({
                   </button>
 
                   {currentUser && !isBlocked && (
-                    <button
-                      type="button"
-                      onClick={() => onMessageUser(member)}
-                      className="px-4 py-2 rounded-xl text-xs font-medium border border-white/15 text-[#F8F9FA] hover:border-[#D4AF37]/40 flex items-center gap-2 transition-colors"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 text-[#D4AF37]" />
-                      <span>Message</span>
-                    </button>
+                    <>
+                      {friendRequest?.status === 'pending' &&
+                      friendRequest.recipientId === currentUser.uid ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={friendBusy}
+                            onClick={() => void handleRespondFriendRequest('accepted')}
+                            className="gold-gradient-btn px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Accept Friend</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={friendBusy}
+                            onClick={() => void handleRespondFriendRequest('declined')}
+                            className="px-3 py-2 rounded-xl text-xs font-medium border border-white/15 text-[#A1A1AA] hover:text-[#F8F9FA] disabled:opacity-50"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      ) : friendRequest?.status === 'pending' &&
+                        friendRequest.senderId === currentUser.uid ? (
+                        <button
+                          type="button"
+                          disabled={friendBusy}
+                          onClick={() => void handleCancelOrUnfriend()}
+                          className="px-3.5 py-2 rounded-xl text-xs font-medium border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37]/10 flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Requested</span>
+                        </button>
+                      ) : friendRequest?.status === 'accepted' ? (
+                        <button
+                          type="button"
+                          disabled={friendBusy}
+                          onClick={() => void handleCancelOrUnfriend()}
+                          title="Tap to unfriend"
+                          className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-[#D4AF37]/40 bg-[#D4AF37]/10 text-[#D4AF37] hover:bg-[#D4AF37]/15 flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          <span>Friends</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={friendBusy}
+                          onClick={() => void handleSendFriendRequest()}
+                          className="px-3.5 py-2 rounded-xl text-xs font-medium border border-white/15 text-[#F8F9FA] hover:border-[#D4AF37]/45 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                          <UserPlus className="w-3.5 h-3.5 text-[#D4AF37]" />
+                          <span>Add Friend</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => onMessageUser(member)}
+                        className="px-4 py-2 rounded-xl text-xs font-medium border border-white/15 text-[#F8F9FA] hover:border-[#D4AF37]/40 flex items-center gap-2 transition-colors"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>Message</span>
+                      </button>
+                    </>
                   )}
 
                   {currentUser && (

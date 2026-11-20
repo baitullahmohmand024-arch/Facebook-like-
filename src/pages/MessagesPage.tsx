@@ -17,13 +17,17 @@ import { playSound } from '../utils/soundVfx';
 
 interface MessagesPageProps {
   initialTargetUser?: UserProfile | null;
+  initialConversationId?: string | null;
   onClearInitialTarget?: () => void;
+  onClearInitialConversation?: () => void;
   onOpenProfile: (userId: string) => void;
 }
 
 export function MessagesPage({
   initialTargetUser,
+  initialConversationId,
   onClearInitialTarget,
+  onClearInitialConversation,
   onOpenProfile,
 }: MessagesPageProps) {
   const { profile, privateSettings } = useAuth();
@@ -89,6 +93,16 @@ export function MessagesPage({
         showToast({ type: 'error', title: 'Could not start conversation' });
       });
   }, [profile, initialTargetUser, blockedSet, onClearInitialTarget, showToast]);
+
+  // Open specific conversation when navigated from a NEW_MESSAGE notification
+  useEffect(() => {
+    if (!initialConversationId || conversations.length === 0) return;
+    const match = conversations.find((c) => c.id === initialConversationId);
+    if (match) {
+      setSelectedConv(match);
+      onClearInitialConversation?.();
+    }
+  }, [initialConversationId, conversations, onClearInitialConversation]);
 
   const syncReadReceipts = useCallback(
     (msgs: ChatMessage[]) => {
@@ -210,7 +224,7 @@ export function MessagesPage({
     const outgoing = messageText;
     setMessageText('');
     try {
-      await sendMessage(selectedConv, profile.uid, outgoing);
+      await sendMessage(selectedConv, profile.uid, outgoing, profile);
       playSound('message-sent');
     } catch {
       setMessageText(outgoing);

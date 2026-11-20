@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Bookmark,
+  CornerDownRight,
   Flag,
   Heart,
   ImageOff,
@@ -11,6 +12,7 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import { CommentItem, Post, UserProfile } from '../types';
 import { formatCount, formatRelativeTime } from '../utils/formatters';
@@ -19,6 +21,7 @@ import { useToast } from '../context/ToastContext';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ReportModal } from './ReportModal';
+import { SharePostModal } from './SharePostModal';
 import { formatUserFriendlyError } from '../lib/firestoreError';
 import { playSound } from '../utils/soundVfx';
 
@@ -35,6 +38,8 @@ interface PostCardProps {
   onSearchHashtag: (tag: string) => void;
   onRequireAuth?: () => void;
   variant?: 'default' | 'feed';
+  initialCommentsOpen?: boolean;
+  highlightCommentId?: string;
 }
 
 export function PostCard({
@@ -50,13 +55,20 @@ export function PostCard({
   onSearchHashtag,
   onRequireAuth,
   variant = 'default',
+  initialCommentsOpen = false,
+  highlightCommentId,
 }: PostCardProps) {
   const { showToast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(initialCommentsOpen);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [replyingTo, setReplyingTo] = useState<{
+    parentCommentId: string;
+    replyToUserId: string;
+    replyToUsername: string;
+  } | null>(null);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [localCommentsCount, setLocalCommentsCount] = useState(post.commentsCount);
   const [mediaError, setMediaError] = useState(false);
@@ -64,7 +76,9 @@ export function PostCard({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalCommentsCount(post.commentsCount);
@@ -92,12 +106,35 @@ export function PostCard({
     }
   };
 
+  useEffect(() => {
+    if (initialCommentsOpen) {
+      setCommentsOpen(true);
+      void loadComments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCommentsOpen, post.id]);
+
   const handleToggleComments = () => {
     const next = !commentsOpen;
     setCommentsOpen(next);
     if (next) {
-      loadComments();
+      void loadComments();
+    } else {
+      setReplyingTo(null);
     }
+  };
+
+  const handleStartReply = (comment: CommentItem) => {
+    if (!currentUser) {
+      onRequireAuth?.();
+      return;
+    }
+    setReplyingTo({
+      parentCommentId: comment.parentCommentId || comment.id,
+      replyToUserId: comment.authorId,
+      replyToUsername: comment.authorUsername,
+    });
+    setTimeout(() => commentInputRef.current?.focus(), 40);
   };
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
@@ -109,10 +146,11 @@ export function PostCard({
     if (!commentText.trim()) return;
     setSubmittingComment(true);
     try {
-      const created = await addComment(post, currentUser, commentText);
+      const created = await addComment(post, currentUser, commentText, replyingTo || undefined);
       setComments((prev) => [...prev, created]);
       setLocalCommentsCount((c) => c + 1);
       setCommentText('');
+      setReplyingTo(null);
       playSound('comment');
     } catch (err) {
       showToast({
@@ -135,23 +173,9 @@ export function PostCard({
     }
   };
 
-  const handleShare = async () => {
-    const shareUrl = `${window.location.origin}/?post=${post.id}`;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      playSound('ui-tap');
-      showToast({
-        type: 'success',
-        title: 'Link copied',
-        description: 'Post link is ready to share.',
-      });
-    } catch {
-      showToast({
-        type: 'info',
-        title: 'Share link',
-        description: shareUrl,
-      });
-    }
+  const handleShare = () => {
+    playSound('ui-tap');
+    setShareOpen(true);
   };
 
   const handleConfirmDelete = async () => {
@@ -221,7 +245,7 @@ export function PostCard({
                   className="w-full px-3.5 py-2 text-left text-xs font-medium text-[#FFFFFF] hover:bg-white/[0.06] flex items-center gap-2.5"
                 >
                   <Share2 className="w-3.5 h-3.5 text-[#F5C542]" />
-                  Copy Post Link
+                  Share Post
                 </button>
 
                 {currentUser && currentUser.uid !== post.authorId && (
@@ -432,8 +456,15 @@ export function PostCard({
                           currentUser.uid === post.authorId ||
                           isAdmin)
                     );
+                    const isHighlighted = highlightCommentId === comment.id;
+                    const isReply = Boolean(comment.parentCommentId);
                     return (
-                      <div key={comment.id} className="flex items-start justify-between gap-3">
+                      <div
+                        key={comment.id}
+                        className={`flex items-start justify-between gap-3 rounded-xl px-2 py-1.5 transition-colors ${
+                          isReply ? 'ml-5 border-l-2 border-[#F5C542]/25 pl-3' : ''
+                        } ${isHighlighted ? 'bg-[#F5C542]/12 ring-1 ring-[#F5C542]/45' : ''}`}
+                      >
                         <div className="flex items-start gap-2.5 min-w-0">
                           <Avatar
                             src={comment.authorAvatarUrl}
@@ -449,11 +480,26 @@ export function PostCard({
                               >
                                 @{comment.authorUsername}
                               </button>
+                              {comment.replyToUsername && (
+                                <span className="text-[#F5C542]/90 mr-1.5 font-medium">
+                                  @{comment.replyToUsername}
+                                </span>
+                              )}
                               {comment.text}
                             </p>
-                            <span className="text-[11px] text-[#A5A5AD]">
-                              {formatRelativeTime(comment.createdAt)}
-                            </span>
+                            <div className="mt-0.5 flex items-center gap-3 text-[11px] text-[#A5A5AD]">
+                              <span>{formatRelativeTime(comment.createdAt)}</span>
+                              {currentUser && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartReply(comment)}
+                                  className="inline-flex items-center gap-1 hover:text-[#F5C542] font-medium transition-colors"
+                                >
+                                  <CornerDownRight className="w-3 h-3" />
+                                  <span>Reply</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                         {canRemoveComment && (
@@ -472,13 +518,36 @@ export function PostCard({
                 </div>
               )}
 
+              {replyingTo && (
+                <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#F5C542]/10 border border-[#F5C542]/25 text-xs">
+                  <span className="text-[#F5C542] truncate">
+                    Replying to <strong>@{replyingTo.replyToUsername}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    aria-label="Cancel reply"
+                    className="text-[#A5A5AD] hover:text-[#FFFFFF]"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               <form onSubmit={handleCommentSubmit} className="flex items-center gap-2 pt-1">
                 <input
+                  ref={commentInputRef}
                   type="text"
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
                   maxLength={500}
-                  placeholder={currentUser ? 'Add a thoughtful comment...' : 'Sign in to comment'}
+                  placeholder={
+                    replyingTo
+                      ? `Reply to @${replyingTo.replyToUsername}...`
+                      : currentUser
+                      ? 'Add a thoughtful comment or @mention...'
+                      : 'Sign in to comment'
+                  }
                   className="flex-1 rounded-xl bg-[#050505] border border-white/10 px-3.5 py-2 text-sm text-[#FFFFFF] placeholder:text-[#A5A5AD]/70 focus:outline-none focus:border-[#F5C542]"
                 />
                 <button
@@ -516,6 +585,12 @@ export function PostCard({
             onClose={() => setReportOpen(false)}
           />
         )}
+
+        <SharePostModal
+          open={shareOpen}
+          post={post}
+          onClose={() => setShareOpen(false)}
+        />
       </article>
     );
   }
@@ -563,7 +638,7 @@ export function PostCard({
                 className="w-full px-3.5 py-2 text-left text-xs font-medium text-[#F8F9FA] hover:bg-white/[0.06] flex items-center gap-2.5"
               >
                 <Share2 className="w-3.5 h-3.5 text-[#A1A1AA]" />
-                Copy Post Link
+                Share Post
               </button>
 
               {currentUser && currentUser.uid !== post.authorId && (
@@ -767,8 +842,15 @@ export function PostCard({
                         currentUser.uid === post.authorId ||
                         isAdmin)
                   );
+                  const isHighlighted = highlightCommentId === comment.id;
+                  const isReply = Boolean(comment.parentCommentId);
                   return (
-                    <div key={comment.id} className="flex items-start justify-between gap-3">
+                    <div
+                      key={comment.id}
+                      className={`flex items-start justify-between gap-3 rounded-xl px-2 py-1.5 transition-colors ${
+                        isReply ? 'ml-5 border-l-2 border-[#D4AF37]/25 pl-3' : ''
+                      } ${isHighlighted ? 'bg-[#D4AF37]/12 ring-1 ring-[#D4AF37]/45' : ''}`}
+                    >
                       <div className="flex items-start gap-2.5 min-w-0">
                         <Avatar
                           src={comment.authorAvatarUrl}
@@ -784,11 +866,26 @@ export function PostCard({
                             >
                               @{comment.authorUsername}
                             </button>
+                            {comment.replyToUsername && (
+                              <span className="text-[#D4AF37]/90 mr-1.5 font-medium">
+                                @{comment.replyToUsername}
+                              </span>
+                            )}
                             {comment.text}
                           </p>
-                          <span className="text-[11px] text-[#71717A]">
-                            {formatRelativeTime(comment.createdAt)}
-                          </span>
+                          <div className="mt-0.5 flex items-center gap-3 text-[11px] text-[#71717A]">
+                            <span>{formatRelativeTime(comment.createdAt)}</span>
+                            {currentUser && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartReply(comment)}
+                                className="inline-flex items-center gap-1 hover:text-[#D4AF37] font-medium transition-colors"
+                              >
+                                <CornerDownRight className="w-3 h-3" />
+                                <span>Reply</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                       {canRemoveComment && (
@@ -807,13 +904,36 @@ export function PostCard({
               </div>
             )}
 
+            {replyingTo && (
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/25 text-xs">
+                <span className="text-[#D4AF37] truncate">
+                  Replying to <strong>@{replyingTo.replyToUsername}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReplyingTo(null)}
+                  aria-label="Cancel reply"
+                  className="text-[#A1A1AA] hover:text-[#F8F9FA]"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             <form onSubmit={handleCommentSubmit} className="flex items-center gap-2 pt-1">
               <input
+                ref={commentInputRef}
                 type="text"
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 maxLength={500}
-                placeholder={currentUser ? 'Add a thoughtful comment...' : 'Sign in to comment'}
+                placeholder={
+                  replyingTo
+                    ? `Reply to @${replyingTo.replyToUsername}...`
+                    : currentUser
+                    ? 'Add a thoughtful comment or @mention...'
+                    : 'Sign in to comment'
+                }
                 className="flex-1 rounded-xl bg-[#0A0A0C] border border-white/10 px-3.5 py-2 text-sm text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37]"
               />
               <button
@@ -851,6 +971,12 @@ export function PostCard({
           onClose={() => setReportOpen(false)}
         />
       )}
+
+      <SharePostModal
+        open={shareOpen}
+        post={post}
+        onClose={() => setShareOpen(false)}
+      />
     </article>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, Shield, Sliders, Trash2, UserX, X } from 'lucide-react';
+import { Check, Megaphone, Send, Shield, Sliders, Trash2, UserX, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { ModerationReport, UserProfile } from '../types';
@@ -11,6 +11,7 @@ import {
   savePlatformSettings,
   updateReportStatus,
 } from '../services/socialService';
+import { sendAdminAnnouncement } from '../services/notificationService';
 import { Avatar } from '../components/Avatar';
 import { formatRelativeTime } from '../utils/formatters';
 
@@ -18,11 +19,16 @@ export function AdminPage() {
   const { profile, isAdmin, platformSettings, refreshPlatformSettings } = useAuth();
   const { showToast } = useToast();
 
-  const [tab, setTab] = useState<'reports' | 'members' | 'settings'>('reports');
+  const [tab, setTab] = useState<'reports' | 'members' | 'announcements' | 'settings'>('reports');
   const [reports, setReports] = useState<ModerationReport[]>([]);
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [postsSampled, setPostsSampled] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Announcement broadcast form
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementBody, setAnnouncementBody] = useState('');
+  const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
 
   // Platform config form
   const [maxUploadSizeMB, setMaxUploadSizeMB] = useState(platformSettings.maxUploadSizeMB);
@@ -151,6 +157,33 @@ export function AdminPage() {
     }
   };
 
+  const handleSendAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || sendingAnnouncement) return;
+    setSendingAnnouncement(true);
+    try {
+      const count = await sendAdminAnnouncement({
+        adminProfile: profile,
+        title: announcementTitle,
+        body: announcementBody,
+      });
+      setAnnouncementTitle('');
+      setAnnouncementBody('');
+      showToast({
+        type: 'success',
+        title: 'Announcement published',
+        description:
+          count > 0
+            ? `Delivered in-app notification to ${count} active member${count === 1 ? '' : 's'}.`
+            : 'No active recipient accounts found yet.',
+      });
+    } catch {
+      showToast({ type: 'error', title: 'Could not send announcement' });
+    } finally {
+      setSendingAnnouncement(false);
+    }
+  };
+
   const openReportsCount = reports.filter((r) => r.status === 'open').length;
 
   return (
@@ -189,11 +222,12 @@ export function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div className="inline-flex items-center gap-1 p-1 bg-[#151519] rounded-xl border border-white/[0.08]">
+      <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-[#151519] rounded-xl border border-white/[0.08]">
         {(
           [
             { id: 'reports', label: 'Reported Content' },
             { id: 'members', label: 'Member Activity' },
+            { id: 'announcements', label: 'Announcements' },
             { id: 'settings', label: 'Platform Settings' },
           ] as const
         ).map((item) => (
@@ -314,6 +348,58 @@ export function AdminPage() {
             </div>
           ))}
         </div>
+      ) : tab === 'announcements' ? (
+        <form
+          onSubmit={handleSendAnnouncement}
+          className="bg-[#151519] border border-white/[0.08] rounded-2xl p-6 space-y-5 max-w-xl"
+        >
+          <div className="flex items-center gap-2.5 pb-2 border-b border-white/[0.06]">
+            <Megaphone className="w-4 h-4 text-[#D4AF37]" />
+            <div>
+              <h2 className="font-display text-base font-semibold text-[#F8F9FA]">
+                Important App Announcement
+              </h2>
+              <p className="text-xs text-[#A1A1AA]">
+                Broadcast an official Hostel Friend alert to active community members
+              </p>
+            </div>
+          </div>
+
+          <label className="block text-xs font-medium text-[#A1A1AA]">
+            Announcement Title
+            <input
+              type="text"
+              required
+              maxLength={120}
+              value={announcementTitle}
+              onChange={(e) => setAnnouncementTitle(e.target.value)}
+              placeholder="e.g., Campus Photography Contest This Friday"
+              className="mt-1.5 w-full rounded-xl bg-[#0A0A0C] border border-white/10 px-3.5 py-2.5 text-sm text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37]"
+            />
+          </label>
+
+          <label className="block text-xs font-medium text-[#A1A1AA]">
+            Announcement Message
+            <textarea
+              rows={4}
+              required
+              maxLength={260}
+              value={announcementBody}
+              onChange={(e) => setAnnouncementBody(e.target.value)}
+              placeholder="Write a clear, helpful announcement for Hostel Friend members..."
+              className="mt-1.5 w-full rounded-xl bg-[#0A0A0C] border border-white/10 px-3.5 py-2.5 text-sm text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37] resize-none"
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={sendingAnnouncement || !announcementTitle.trim() || !announcementBody.trim()}
+            className="gold-gradient-btn px-5 py-2.5 rounded-xl text-xs font-semibold inline-flex items-center gap-2 disabled:opacity-50"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>{sendingAnnouncement ? 'Sending...' : 'Send Announcement'}</span>
+          </button>
+        </form>
       ) : (
         <form
           onSubmit={handleSavePlatformSettings}

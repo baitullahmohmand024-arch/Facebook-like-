@@ -3,7 +3,7 @@ import { DocumentSnapshot } from 'firebase/firestore';
 import { ArrowRight, Image as ImageIcon, Plus, PlusSquare, RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { FeedTab, Post, UserProfile } from '../types';
+import { FeedTab, Post, StoryItem, UserProfile } from '../types';
 import {
   deletePost,
   fetchPostsPage,
@@ -12,10 +12,12 @@ import {
   toggleLikePost,
   toggleSavePost,
 } from '../services/postService';
+import { fetchActiveStories } from '../services/storyService';
 import { fetchDiscoverMembers, getFollowingIds } from '../services/userService';
 import { PostCard } from '../components/PostCard';
 import { PostCardSkeleton } from '../components/Skeletons';
 import { Avatar } from '../components/Avatar';
+import { AddStoryModal, StoryViewerModal } from '../components/StoryModals';
 import { formatUserFriendlyError } from '../lib/firestoreError';
 
 interface FeedPageProps {
@@ -46,6 +48,9 @@ export function FeedPage({
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [suggestedMembers, setSuggestedMembers] = useState<UserProfile[]>([]);
+  const [stories, setStories] = useState<StoryItem[]>([]);
+  const [addStoryOpen, setAddStoryOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [bannerImgSrc, setBannerImgSrc] = useState(
     'https://res.cloudinary.com/jnobnl9r/image/upload/v1795087575/images_2_w4lp7z.jpg'
   );
@@ -61,11 +66,17 @@ export function FeedPage({
     try {
       const pagePromise = fetchPostsPage(null, 12);
       const membersPromise = fetchDiscoverMembers(8);
-      const [page, members] = await Promise.all([pagePromise, membersPromise]);
+      const storiesPromise = fetchActiveStories(40).catch(() => [] as StoryItem[]);
+      const [page, members, activeStories] = await Promise.all([
+        pagePromise,
+        membersPromise,
+        storiesPromise,
+      ]);
 
       setPosts(page.posts);
       setLastDoc(page.lastDoc);
       setHasMore(page.hasMore);
+      setStories(activeStories);
       setSuggestedMembers(
         members.filter((m) => m.uid !== profile?.uid && !blockedSet.has(m.uid)).slice(0, 5)
       );
@@ -194,6 +205,24 @@ export function FeedPage({
     }
   };
 
+  const visibleStories = useMemo(
+    () => stories.filter((s) => !blockedSet.has(s.authorId)),
+    [stories, blockedSet]
+  );
+
+  // Deduplicate latest story per author for the ring bar, keeping full chronological array for viewer
+  const storyHighlights = useMemo(() => {
+    const seenAuthors = new Set<string>();
+    const list: { story: StoryItem; indexInStream: number }[] = [];
+    visibleStories.forEach((story, idx) => {
+      if (!seenAuthors.has(story.authorId)) {
+        seenAuthors.add(story.authorId);
+        list.push({ story, indexInStream: idx });
+      }
+    });
+    return list;
+  }, [visibleStories]);
+
   const displayedPosts = useMemo(() => {
     const visible = posts.filter((p) => !blockedSet.has(p.authorId));
     if (activeTab === 'following') {
@@ -315,22 +344,28 @@ export function FeedPage({
           </div>
         </div>
 
-        {/* Real Community Members Highlight Strip */}
+        {/* Stories Strip + Attractive Add Story Card */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span
-                className="w-4 h-4 rounded-full border-[2.5px] border-[#F5C542] inline-block shrink-0"
+                className="w-4 h-4 rounded-full border-[2.5px] border-[#F5C542] inline-block shrink-0 shadow-[0_0_10px_rgba(245,197,66,0.45)]"
                 aria-hidden="true"
               />
-              <span className="font-display text-sm font-semibold text-[#FFFFFF]">Community</span>
+              <span className="font-display text-sm font-semibold text-[#FFFFFF]">Stories</span>
             </div>
             <button
               type="button"
-              onClick={onNavigateExplore}
+              onClick={() => {
+                if (visibleStories.length > 0) {
+                  setViewerIndex(0);
+                } else {
+                  onNavigateExplore();
+                }
+              }}
               className="text-xs font-semibold text-[#F5C542] hover:text-[#F8D162] inline-flex items-center gap-1 transition-colors"
             >
-              <span>See all</span>
+              <span>{visibleStories.length > 0 ? 'Watch all' : 'See all'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -338,32 +373,78 @@ export function FeedPage({
           <div className="flex items-start gap-3.5 overflow-x-auto pb-1">
             <button
               type="button"
-              onClick={onNavigateCreate}
-              className="w-[74px] h-[94px] rounded-2xl bg-gradient-to-b from-[#19191D] to-[#111114] border border-[#F5C542]/35 hover:border-[#F5C542]/70 flex flex-col items-center justify-center gap-2 shrink-0 shadow-[0_6px_18px_rgba(245,197,66,0.08)] transition-all active:scale-[0.98]"
+              onClick={() => {
+                if (!profile) {
+                  onRequireAuth();
+                  return;
+                }
+                setAddStoryOpen(true);
+              }}
+              className="w-[78px] h-[98px] rounded-2xl bg-gradient-to-b from-[#1A1A20] via-[#131317] to-[#0B0B0E] border border-[#F5C542]/45 hover:border-[#F5C542] flex flex-col items-center justify-center gap-2 shrink-0 shadow-[0_8px_24px_rgba(245,197,66,0.14)] hover:shadow-[0_10px_28px_rgba(245,197,66,0.24)] transition-all active:scale-[0.98] relative overflow-hidden"
             >
-              <span className="w-9 h-9 rounded-full bg-gradient-to-br from-[#F8D162] via-[#F5C542] to-[#D99B19] text-[#050505] flex items-center justify-center shadow-[0_3px_12px_rgba(245,197,66,0.4)]">
-                <Plus className="w-5 h-5 stroke-[2.5]" />
+              <span
+                aria-hidden="true"
+                className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(245,197,66,0.2),transparent_70%)] pointer-events-none"
+              />
+              <span className="relative z-10 w-10 h-10 rounded-full bg-gradient-to-br from-[#F8D162] via-[#F5C542] to-[#D99B19] text-[#050505] flex items-center justify-center shadow-[0_4px_16px_rgba(245,197,66,0.5)]">
+                <Plus className="w-5 h-5 stroke-[2.6]" />
               </span>
-              <span className="text-[11px] font-medium text-[#FFFFFF]">Add Post</span>
+              <span className="relative z-10 text-[11px] font-semibold text-[#FFFFFF]">
+                Add Story
+              </span>
             </button>
 
-            {suggestedMembers.map((member) => (
+            {storyHighlights.map(({ story, indexInStream }) => (
               <button
-                key={member.uid}
+                key={story.id}
                 type="button"
-                onClick={() => onOpenProfile(member.uid)}
-                className="w-[70px] flex flex-col items-center gap-1.5 shrink-0 group text-center pt-1"
+                onClick={() => setViewerIndex(indexInStream)}
+                className="w-[74px] flex flex-col items-center gap-1.5 shrink-0 group text-center pt-1"
               >
-                <div className="p-[2px] rounded-full bg-gradient-to-tr from-[#D99B19] via-[#F5C542] to-[#F8D162] shadow-[0_4px_14px_rgba(245,197,66,0.2)] group-hover:scale-105 transition-transform">
-                  <div className="rounded-full p-[2px] bg-[#050505]">
-                    <Avatar src={member.avatarUrl} name={member.fullName} size="md" />
+                <div className="p-[2.5px] rounded-full bg-gradient-to-tr from-[#D99B19] via-[#F5C542] to-[#F8D162] shadow-[0_4px_16px_rgba(245,197,66,0.28)] group-hover:scale-105 transition-transform">
+                  <div className="w-[58px] h-[58px] rounded-full p-[2px] bg-[#050505] overflow-hidden">
+                    {story.mediaType === 'image' ? (
+                      <img
+                        src={story.mediaUrl}
+                        alt={story.authorName}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <Avatar
+                        src={story.authorAvatarUrl}
+                        name={story.authorName}
+                        size="md"
+                        className="w-full h-full"
+                      />
+                    )}
                   </div>
                 </div>
-                <span className="w-full text-[11px] text-[#FFFFFF]/90 group-hover:text-[#F5C542] truncate transition-colors">
-                  {member.fullName.split(' ')[0]}
+                <span className="w-full text-[11px] font-medium text-[#FFFFFF]/95 group-hover:text-[#F5C542] truncate transition-colors">
+                  {story.authorId === profile?.uid ? 'Your Story' : story.authorName.split(' ')[0]}
                 </span>
               </button>
             ))}
+
+            {suggestedMembers
+              .filter((m) => !storyHighlights.some((h) => h.story.authorId === m.uid))
+              .map((member) => (
+                <button
+                  key={member.uid}
+                  type="button"
+                  onClick={() => onOpenProfile(member.uid)}
+                  className="w-[72px] flex flex-col items-center gap-1.5 shrink-0 group text-center pt-1"
+                >
+                  <div className="p-[2px] rounded-full bg-gradient-to-tr from-[#D99B19]/75 via-[#F5C542]/80 to-[#F8D162]/75 shadow-[0_4px_14px_rgba(245,197,66,0.16)] group-hover:scale-105 transition-transform">
+                    <div className="rounded-full p-[2px] bg-[#050505]">
+                      <Avatar src={member.avatarUrl} name={member.fullName} size="md" />
+                    </div>
+                  </div>
+                  <span className="w-full text-[11px] text-[#FFFFFF]/85 group-hover:text-[#F5C542] truncate transition-colors">
+                    {member.fullName.split(' ')[0]}
+                  </span>
+                </button>
+              ))}
           </div>
         </div>
 
@@ -561,6 +642,32 @@ export function FeedPage({
           </div>
         </div>
       </aside>
+
+      {profile && (
+        <AddStoryModal
+          open={addStoryOpen}
+          profile={profile}
+          maxUploadSizeMB={platformSettings.maxUploadSizeMB}
+          onClose={() => setAddStoryOpen(false)}
+          onStoryCreated={(newStory) => {
+            setStories((prev) => [newStory, ...prev]);
+          }}
+        />
+      )}
+
+      {viewerIndex !== null && visibleStories.length > 0 && (
+        <StoryViewerModal
+          stories={visibleStories}
+          initialIndex={viewerIndex}
+          currentUserId={profile?.uid}
+          isAdmin={isAdmin}
+          onClose={() => setViewerIndex(null)}
+          onOpenProfile={onOpenProfile}
+          onStoryDeleted={(storyId) => {
+            setStories((prev) => prev.filter((s) => s.id !== storyId));
+          }}
+        />
+      )}
     </div>
   );
 }

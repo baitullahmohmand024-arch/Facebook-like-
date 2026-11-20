@@ -73,6 +73,34 @@ service cloud.firestore {
       && data.updatedAt is timestamp;
     }
 
+    function isValidStory(data) {
+      return data.keys().hasAll([
+        'id', 'authorId', 'authorUsername', 'authorName', 'authorAvatarUrl',
+        'mediaUrl', 'mediaType', 'caption', 'visibility', 'createdAt', 'expiresAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'authorId', 'authorUsername', 'authorName', 'authorAvatarUrl',
+        'mediaUrl', 'mediaType', 'caption', 'visibility', 'createdAt', 'expiresAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.authorId)
+      && data.authorUsername is string && data.authorUsername.size() >= 3 && data.authorUsername.size() <= 24 && data.authorUsername.matches('^[a-zA-Z0-9_]+$')
+      && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 64
+      && data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 32768
+      && data.mediaUrl is string && data.mediaUrl.size() <= 500000
+      && (
+        (data.mediaUrl.size() >= 9 && data.mediaUrl[0:8] == 'https://') ||
+        (data.mediaUrl.size() >= 13 && data.mediaUrl.size() <= 260 && data.mediaUrl[0:11] == '/api/media/' && data.mediaUrl.matches('^/api/media/[a-zA-Z0-9._\\-]+$')) ||
+        (data.mediaUrl.size() >= 24 && data.mediaUrl[0:23].matches('^data:image/(webp|jpeg|png|gif);base64,.*')) ||
+        (data.mediaUrl.size() >= 24 && data.mediaUrl[0:11] == 'data:video/' && data.mediaUrl[0:30].matches('^data:video/(mp4|webm|quicktime);base64,.*'))
+      )
+      && data.mediaType in ['image', 'video']
+      && data.caption is string && data.caption.size() <= 280
+      && data.visibility == 'public'
+      && data.createdAt is timestamp
+      && data.expiresAt is timestamp;
+    }
+
     function isValidUserPrivateSettings(data) {
       return data.keys().hasAll([
         'uid', 'email', 'privacyMode', 'notifyLikes', 'notifyComments',
@@ -126,7 +154,9 @@ service cloud.firestore {
         (data.mediaType == 'text' && data.mediaUrl.size() == 0 && data.caption.size() >= 1) ||
         (data.mediaType in ['image', 'video'] && (
           (data.mediaUrl.size() >= 9 && data.mediaUrl[0:8] == 'https://') ||
-          (data.mediaUrl.size() >= 24 && data.mediaUrl[0:23].matches('^data:image/(webp|jpeg|png|gif);base64,.*'))
+          (data.mediaUrl.size() >= 13 && data.mediaUrl.size() <= 260 && data.mediaUrl[0:11] == '/api/media/' && data.mediaUrl.matches('^/api/media/[a-zA-Z0-9._\\-]+$')) ||
+          (data.mediaUrl.size() >= 24 && data.mediaUrl[0:23].matches('^data:image/(webp|jpeg|png|gif);base64,.*')) ||
+          (data.mediaUrl.size() >= 24 && data.mediaUrl[0:11] == 'data:video/' && data.mediaUrl[0:30].matches('^data:video/(mp4|webm|quicktime);base64,.*'))
         ))
       )
       && data.hashtags is list && data.hashtags.size() <= 10
@@ -145,7 +175,8 @@ service cloud.firestore {
       ])
       && data.keys().hasOnly([
         'id', 'postId', 'postAuthorId', 'authorId', 'authorUsername',
-        'authorName', 'authorAvatarUrl', 'text', 'isPublic', 'createdAt'
+        'authorName', 'authorAvatarUrl', 'text', 'parentCommentId',
+        'replyToUserId', 'replyToUsername', 'isPublic', 'createdAt'
       ])
       && isValidId(data.id)
       && isValidId(data.postId)
@@ -155,6 +186,9 @@ service cloud.firestore {
       && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 64
       && data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 32768
       && data.text is string && data.text.size() >= 1 && data.text.size() <= 500
+      && (!('parentCommentId' in data) || (data.parentCommentId is string && data.parentCommentId.size() <= 128))
+      && (!('replyToUserId' in data) || (data.replyToUserId is string && data.replyToUserId.size() <= 128))
+      && (!('replyToUsername' in data) || (data.replyToUsername is string && data.replyToUsername.size() <= 24))
       && data.isPublic is bool
       && data.createdAt is timestamp;
     }
@@ -193,20 +227,105 @@ service cloud.firestore {
         'actorAvatarUrl', 'type', 'postId', 'message', 'isRead', 'createdAt'
       ])
       && data.keys().hasOnly([
-        'id', 'recipientId', 'actorId', 'actorUsername', 'actorName',
-        'actorAvatarUrl', 'type', 'postId', 'message', 'isRead', 'createdAt'
+        'id', 'recipientId', 'actorId', 'senderId', 'actorUsername', 'actorName',
+        'actorAvatarUrl', 'type', 'title', 'body', 'postId', 'relatedPostId',
+        'relatedCommentId', 'relatedConversationId', 'relatedMessageId',
+        'relatedRequestId', 'actionUrl', 'message', 'isRead', 'createdAt'
       ])
       && isValidId(data.id)
       && isValidId(data.recipientId)
       && isValidId(data.actorId)
+      && (!('senderId' in data) || (data.senderId is string && data.senderId.size() <= 128))
       && data.actorUsername is string && data.actorUsername.size() <= 24
       && data.actorName is string && data.actorName.size() <= 64
       && data.actorAvatarUrl is string && data.actorAvatarUrl.size() <= 32768
-      && data.type in ['like', 'comment', 'follow', 'mention', 'system']
+      && data.type in [
+        'NEW_MESSAGE', 'POST_LIKE', 'POST_COMMENT', 'COMMENT_REPLY',
+        'NEW_FOLLOWER', 'FRIEND_REQUEST', 'FRIEND_REQUEST_ACCEPTED',
+        'USER_MENTION', 'IMPORTANT_APP_ANNOUNCEMENT',
+        'like', 'comment', 'follow', 'mention', 'system'
+      ]
+      && (!('title' in data) || (data.title is string && data.title.size() <= 120))
+      && (!('body' in data) || (data.body is string && data.body.size() <= 280))
       && data.postId is string && data.postId.size() <= 128
-      && data.message is string && data.message.size() >= 1 && data.message.size() <= 240
+      && (!('relatedPostId' in data) || (data.relatedPostId is string && data.relatedPostId.size() <= 128))
+      && (!('relatedCommentId' in data) || (data.relatedCommentId is string && data.relatedCommentId.size() <= 128))
+      && (!('relatedConversationId' in data) || (data.relatedConversationId is string && data.relatedConversationId.size() <= 128))
+      && (!('relatedMessageId' in data) || (data.relatedMessageId is string && data.relatedMessageId.size() <= 128))
+      && (!('relatedRequestId' in data) || (data.relatedRequestId is string && data.relatedRequestId.size() <= 128))
+      && (!('actionUrl' in data) || (data.actionUrl is string && data.actionUrl.size() <= 256))
+      && data.message is string && data.message.size() >= 1 && data.message.size() <= 280
       && data.isRead is bool
       && data.createdAt is timestamp;
+    }
+
+    function isValidFriendRequest(data) {
+      return data.keys().hasAll([
+        'id', 'senderId', 'senderUsername', 'senderName', 'senderAvatarUrl',
+        'recipientId', 'recipientUsername', 'recipientName', 'recipientAvatarUrl',
+        'participantIds', 'status', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'senderId', 'senderUsername', 'senderName', 'senderAvatarUrl',
+        'recipientId', 'recipientUsername', 'recipientName', 'recipientAvatarUrl',
+        'participantIds', 'status', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.senderId)
+      && isValidId(data.recipientId)
+      && data.senderId != data.recipientId
+      && data.senderUsername is string && data.senderUsername.size() <= 24
+      && data.senderName is string && data.senderName.size() <= 64
+      && data.senderAvatarUrl is string && data.senderAvatarUrl.size() <= 32768
+      && data.recipientUsername is string && data.recipientUsername.size() <= 24
+      && data.recipientName is string && data.recipientName.size() <= 64
+      && data.recipientAvatarUrl is string && data.recipientAvatarUrl.size() <= 32768
+      && data.participantIds is list && data.participantIds.size() == 2
+      && data.senderId in data.participantIds
+      && data.recipientId in data.participantIds
+      && data.status in ['pending', 'accepted', 'declined']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidNotificationPreferences(data) {
+      return data.keys().hasAll([
+        'uid', 'messages', 'likes', 'comments', 'commentReplies',
+        'follows', 'friendRequests', 'mentions', 'announcements',
+        'pushEnabled', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'messages', 'likes', 'comments', 'commentReplies',
+        'follows', 'friendRequests', 'mentions', 'announcements',
+        'pushEnabled', 'updatedAt'
+      ])
+      && isValidId(data.uid)
+      && data.messages is bool
+      && data.likes is bool
+      && data.comments is bool
+      && data.commentReplies is bool
+      && data.follows is bool
+      && data.friendRequests is bool
+      && data.mentions is bool
+      && data.announcements is bool
+      && data.pushEnabled is bool
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidFcmToken(data) {
+      return data.keys().hasAll([
+        'id', 'uid', 'token', 'platform', 'userAgent', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'uid', 'token', 'platform', 'userAgent', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.uid)
+      && data.token is string && data.token.size() >= 10 && data.token.size() <= 512
+      && data.platform in ['web', 'android-pwa', 'ios-pwa']
+      && data.userAgent is string && data.userAgent.size() <= 300
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
     }
 
     function isValidConversation(data) {
@@ -408,6 +527,51 @@ service cloud.firestore {
                       ]);
         allow delete: if isVerified() && isValidId(userId) && (isOwner(userId) || isAdmin());
       }
+
+      // Granular Notification Preferences (/users/{userId}/notificationSettings/preferences)
+      match /notificationSettings/preferences {
+        allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+        allow create: if isVerified()
+                      && isValidId(userId)
+                      && isOwner(userId)
+                      && isValidNotificationPreferences(incoming())
+                      && incoming().uid == userId
+                      && incoming().updatedAt == request.time;
+        allow update: if isVerified()
+                      && isValidId(userId)
+                      && isOwner(userId)
+                      && isValidNotificationPreferences(incoming())
+                      && incoming().uid == existing().uid
+                      && incoming().updatedAt == request.time;
+        allow delete: if isVerified() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      }
+
+      // Private Device FCM Push Tokens (/users/{userId}/fcmTokens/{tokenId})
+      match /fcmTokens/{tokenId} {
+        allow get, list: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+        allow create: if isVerified()
+                      && isValidId(userId)
+                      && isValidId(tokenId)
+                      && isOwner(userId)
+                      && isValidFcmToken(incoming())
+                      && incoming().id == tokenId
+                      && incoming().uid == userId
+                      && incoming().createdAt == request.time
+                      && incoming().updatedAt == request.time;
+        allow update: if isVerified()
+                      && isValidId(userId)
+                      && isValidId(tokenId)
+                      && isOwner(userId)
+                      && isValidFcmToken(incoming())
+                      && incoming().id == existing().id
+                      && incoming().uid == existing().uid
+                      && incoming().createdAt == existing().createdAt
+                      && incoming().updatedAt == request.time;
+        allow delete: if isSignedIn()
+                      && isValidId(userId)
+                      && isValidId(tokenId)
+                      && (isOwner(userId) || isAdmin());
+      }
     }
 
     // Username Reservation Index (/usernames/{usernameLower})
@@ -485,6 +649,25 @@ service cloud.firestore {
 
       allow delete: if isVerified()
                     && isValidId(postId)
+                    && (isOwner(existing().authorId) || isAdmin());
+    }
+
+    // Stories (/stories/{storyId})
+    match /stories/{storyId} {
+      allow get: if isValidId(storyId) && (resource == null || existing().visibility == 'public');
+      allow list: if (request.query.limit is int && request.query.limit <= 50) || isAdmin();
+
+      allow create: if isNotSuspended()
+                    && isValidId(storyId)
+                    && isValidStory(incoming())
+                    && incoming().id == storyId
+                    && incoming().authorId == request.auth.uid
+                    && incoming().createdAt == request.time
+                    && incoming().expiresAt > request.time
+                    && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      allow delete: if isVerified()
+                    && isValidId(storyId)
                     && (isOwner(existing().authorId) || isAdmin());
     }
 
@@ -585,6 +768,51 @@ service cloud.firestore {
       allow delete: if isVerified() && isValidId(saveId) && existing().userId == request.auth.uid;
     }
 
+    // Friend Requests (/friendRequests/{requestId})
+    match /friendRequests/{requestId} {
+      allow get: if isSignedIn()
+                 && isValidId(requestId)
+                 && (resource == null || request.auth.uid in existing().participantIds || isAdmin());
+      allow list: if isSignedIn() && (request.auth.uid in resource.data.participantIds || isAdmin());
+
+      allow create: if isNotSuspended()
+                    && isValidId(requestId)
+                    && isValidFriendRequest(incoming())
+                    && incoming().id == requestId
+                    && incoming().senderId == request.auth.uid
+                    && incoming().status == 'pending'
+                    && incoming().createdAt == request.time
+                    && incoming().updatedAt == request.time
+                    && exists(/databases/$(database)/documents/users/$(incoming().recipientId));
+
+      allow update: if isNotSuspended()
+                    && isValidId(requestId)
+                    && isValidFriendRequest(incoming())
+                    && request.auth.uid in existing().participantIds
+                    && incoming().id == existing().id
+                    && incoming().participantIds == existing().participantIds
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().updatedAt == request.time
+                    && (
+                      (
+                        existing().status == 'pending'
+                        && existing().recipientId == request.auth.uid
+                        && incoming().senderId == existing().senderId
+                        && incoming().recipientId == existing().recipientId
+                        && incoming().status in ['accepted', 'declined']
+                      ) ||
+                      (
+                        existing().status == 'declined'
+                        && incoming().senderId == request.auth.uid
+                        && incoming().status == 'pending'
+                      )
+                    );
+
+      allow delete: if isVerified()
+                    && isValidId(requestId)
+                    && (request.auth.uid in existing().participantIds || isAdmin());
+    }
+
     // Notifications (/notifications/{notificationId})
     match /notifications/{notificationId} {
       allow get: if isSignedIn() && isValidId(notificationId) && (resource == null || existing().recipientId == request.auth.uid);
@@ -595,9 +823,53 @@ service cloud.firestore {
                     && isValidNotification(incoming())
                     && incoming().id == notificationId
                     && incoming().actorId == request.auth.uid
+                    && incoming().recipientId != request.auth.uid
                     && incoming().isRead == false
                     && incoming().createdAt == request.time
-                    && exists(/databases/$(database)/documents/users/$(incoming().recipientId));
+                    && exists(/databases/$(database)/documents/users/$(incoming().recipientId))
+                    && (
+                      (
+                        incoming().type in ['IMPORTANT_APP_ANNOUNCEMENT', 'system']
+                        && isAdmin()
+                      ) ||
+                      (
+                        incoming().type == 'NEW_MESSAGE'
+                        && 'relatedConversationId' in incoming()
+                        && isValidId(incoming().relatedConversationId)
+                        && exists(/databases/$(database)/documents/conversations/$(incoming().relatedConversationId))
+                        && request.auth.uid in get(/databases/$(database)/documents/conversations/$(incoming().relatedConversationId)).data.participantIds
+                        && incoming().recipientId in get(/databases/$(database)/documents/conversations/$(incoming().relatedConversationId)).data.participantIds
+                      ) ||
+                      (
+                        incoming().type in ['POST_LIKE', 'like']
+                        && isValidId(incoming().postId)
+                        && (
+                          exists(/databases/$(database)/documents/likes/$(incoming().postId + '_' + request.auth.uid)) ||
+                          existsAfter(/databases/$(database)/documents/likes/$(incoming().postId + '_' + request.auth.uid))
+                        )
+                      ) ||
+                      (
+                        incoming().type in ['NEW_FOLLOWER', 'follow']
+                        && (
+                          exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + incoming().recipientId)) ||
+                          existsAfter(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + incoming().recipientId))
+                        )
+                      ) ||
+                      (
+                        incoming().type in ['FRIEND_REQUEST', 'FRIEND_REQUEST_ACCEPTED']
+                        && 'relatedRequestId' in incoming()
+                        && isValidId(incoming().relatedRequestId)
+                        && (
+                          exists(/databases/$(database)/documents/friendRequests/$(incoming().relatedRequestId)) ||
+                          existsAfter(/databases/$(database)/documents/friendRequests/$(incoming().relatedRequestId))
+                        )
+                      ) ||
+                      (
+                        incoming().type in ['POST_COMMENT', 'COMMENT_REPLY', 'USER_MENTION', 'comment', 'mention']
+                        && isValidId(incoming().postId)
+                        && exists(/databases/$(database)/documents/posts/$(incoming().postId))
+                      )
+                    );
 
       allow update: if isVerified()
                     && isValidId(notificationId)

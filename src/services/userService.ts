@@ -18,6 +18,7 @@ import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/firestoreError';
 import { UserPrivateSettings, UserProfile } from '../types';
 import { sanitizeUsername } from '../utils/formatters';
+import { buildNotificationPayload, shouldSkipDedupeKey } from './notificationService';
 
 export async function checkUsernameAvailable(username: string): Promise<boolean> {
   const clean = sanitizeUsername(username).toLowerCase();
@@ -109,6 +110,7 @@ export async function createUserProfileAndSettings(params: {
   username: string;
   hostel?: string;
   avatarUrl?: string;
+  coverUrl?: string;
 }): Promise<{ profile: UserProfile; settings: UserPrivateSettings }> {
   const existingProfile = await getUserProfile(params.uid);
   if (existingProfile) {
@@ -127,7 +129,7 @@ export async function createUserProfileAndSettings(params: {
     throw new Error(`Username @${cleanUsername} is already taken. Please choose another.`);
   }
 
-  const defaultCover = '';
+  const defaultCover = (params.coverUrl || '').slice(0, 250000);
   const batch = writeBatch(db);
   const userRef = doc(db, 'users', params.uid);
   const settingsRef = doc(db, 'users', params.uid, 'private', 'settings');
@@ -301,20 +303,21 @@ export async function followUser(actor: UserProfile, targetUid: string): Promise
     updatedAt: serverTimestamp(),
   });
 
-  const notifRef = doc(collection(db, 'notifications'));
-  batch.set(notifRef, {
-    id: notifRef.id,
-    recipientId: targetUid,
-    actorId: actor.uid,
-    actorUsername: actor.username,
-    actorName: actor.fullName,
-    actorAvatarUrl: actor.avatarUrl,
-    type: 'follow',
-    postId: '',
-    message: `@${actor.username} started following you.`,
-    isRead: false,
-    createdAt: serverTimestamp(),
-  });
+  if (!shouldSkipDedupeKey(`follow:${actor.uid}:${targetUid}`)) {
+    const notifRef = doc(collection(db, 'notifications'));
+    batch.set(
+      notifRef,
+      buildNotificationPayload(notifRef.id, {
+        recipientId: targetUid,
+        actor,
+        type: 'NEW_FOLLOWER',
+        title: 'New Follower',
+        body: `${actor.fullName} started following you.`,
+        message: 'started following you.',
+        actionUrl: `/?view=profile&uid=${encodeURIComponent(actor.uid)}`,
+      })
+    );
+  }
 
   try {
     await batch.commit();

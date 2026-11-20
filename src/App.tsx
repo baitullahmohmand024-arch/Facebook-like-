@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
 import { formatUserFriendlyError } from './lib/firestoreError';
-import { AppView, UserProfile } from './types';
+import { normalizeNotificationType } from './services/notificationService';
+import { getUserProfile } from './services/userService';
+import { AppView, NotificationItem, UserProfile } from './types';
 import { Layout } from './components/Layout';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { PostDetailModal } from './components/PostDetailModal';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
 import { FeedPage } from './pages/FeedPage';
@@ -41,9 +44,50 @@ function HostelverseRouter() {
   const [profileUserId, setProfileUserId] = useState<string>('');
   const [exploreTag, setExploreTag] = useState<string>('');
   const [messageTargetUser, setMessageTargetUser] = useState<UserProfile | null>(null);
+  const [initialConversationId, setInitialConversationId] = useState<string | null>(null);
+  const [notificationsInitialTab, setNotificationsInitialTab] = useState<
+    'all' | 'unread' | 'requests'
+  >('all');
+  const [detailPostId, setDetailPostId] = useState<string | null>(null);
+  const [detailCommentId, setDetailCommentId] = useState<string | undefined>(undefined);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
 
-  // Sync authenticated state on initial load
+  const applyDeepLink = useCallback((rawSearch: string) => {
+    const queryStr = rawSearch.includes('?') ? rawSearch.split('?')[1] : rawSearch;
+    const params = new URLSearchParams(queryStr);
+    const targetView = params.get('view') as AppView | null;
+    const postParam = params.get('post');
+    const commentParam = params.get('commentId');
+    const conversationParam = params.get('conversationId');
+    const uidParam = params.get('uid');
+    const tabParam = params.get('tab');
+
+    if (postParam) {
+      setDetailPostId(postParam);
+      setDetailCommentId(commentParam || undefined);
+      setView('feed');
+      return;
+    }
+
+    if (targetView === 'messages') {
+      if (conversationParam) setInitialConversationId(conversationParam);
+      setView('messages');
+      return;
+    }
+
+    if (targetView === 'profile' && uidParam) {
+      setProfileUserId(uidParam);
+      setView('profile');
+      return;
+    }
+
+    if (targetView === 'notifications') {
+      setNotificationsInitialTab(tabParam === 'requests' ? 'requests' : 'all');
+      setView('notifications');
+    }
+  }, []);
+
+  // Sync authenticated state on initial load + apply query deep links
   useEffect(() => {
     if (!authReady) return;
     if (firebaseUser && (needsVerification || needsOnboarding)) {
@@ -51,9 +95,28 @@ function HostelverseRouter() {
       return;
     }
     if (firebaseUser && profile && (view === 'landing' || view === 'auth')) {
-      setView('feed');
+      const search = window.location.search;
+      if (search && (search.includes('view=') || search.includes('post='))) {
+        applyDeepLink(search);
+        window.history.replaceState({}, '', '/');
+      } else {
+        setView('feed');
+      }
     }
-  }, [authReady, firebaseUser, profile, needsVerification, needsOnboarding]);
+  }, [authReady, firebaseUser, profile, needsVerification, needsOnboarding, applyDeepLink, view]);
+
+  // Listen for push notification click messages sent by the unified service worker
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onSwMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; actionUrl?: string } | undefined;
+      if (data?.type === 'HOSTEL_FRIEND_NOTIFICATION_CLICK' && data.actionUrl) {
+        applyDeepLink(data.actionUrl);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onSwMessage);
+  }, [applyDeepLink]);
 
   const requireAuth = (mode: 'login' | 'signup' = 'login') => {
     setAuthInitialMode(mode);
@@ -131,8 +194,60 @@ function HostelverseRouter() {
       requireAuth('login');
       return;
     }
+    setInitialConversationId(null);
     setMessageTargetUser(target);
     setView('messages');
+  };
+
+  const handleOpenNotificationDestination = async (item: NotificationItem) => {
+    const canonical = normalizeNotificationType(item.type);
+    const postId = item.relatedPostId || item.postId || '';
+
+    switch (canonical) {
+      case 'NEW_MESSAGE': {
+        if (item.relatedConversationId) {
+          setMessageTargetUser(null);
+          setInitialConversationId(item.relatedConversationId);
+          setView('messages');
+        } else if (item.actorId) {
+          const actorProfile = await getUserProfile(item.actorId).catch(() => null);
+          if (actorProfile) {
+            openMessageWithUser(actorProfile);
+          } else {
+            setView('messages');
+          }
+        } else {
+          setView('messages');
+        }
+        break;
+      }
+      case 'POST_LIKE':
+      case 'POST_COMMENT':
+      case 'COMMENT_REPLY':
+      case 'USER_MENTION': {
+        if (postId) {
+          setDetailPostId(postId);
+          setDetailCommentId(item.relatedCommentId || undefined);
+        } else if (item.actorId) {
+          openMemberProfile(item.actorId);
+        }
+        break;
+      }
+      case 'NEW_FOLLOWER':
+      case 'FRIEND_REQUEST_ACCEPTED': {
+        if (item.actorId) {
+          openMemberProfile(item.actorId);
+        }
+        break;
+      }
+      case 'FRIEND_REQUEST': {
+        setNotificationsInitialTab('requests');
+        setView('notifications');
+        break;
+      }
+      default:
+        break;
+    }
   };
 
   if (!authReady) {
@@ -356,13 +471,21 @@ function HostelverseRouter() {
       )}
 
       {view === 'notifications' && (
-        <NotificationsPage onOpenProfile={openMemberProfile} />
+        <NotificationsPage
+          initialTab={notificationsInitialTab}
+          onOpenProfile={openMemberProfile}
+          onOpenNotification={(item) => {
+            void handleOpenNotificationDestination(item);
+          }}
+        />
       )}
 
       {view === 'messages' && (
         <MessagesPage
           initialTargetUser={messageTargetUser}
+          initialConversationId={initialConversationId}
           onClearInitialTarget={() => setMessageTargetUser(null)}
+          onClearInitialConversation={() => setInitialConversationId(null)}
           onOpenProfile={openMemberProfile}
         />
       )}
@@ -372,6 +495,19 @@ function HostelverseRouter() {
       )}
 
       {view === 'admin' && <AdminPage />}
+
+      <PostDetailModal
+        postId={detailPostId}
+        highlightCommentId={detailCommentId}
+        openCommentsByDefault={Boolean(detailCommentId) || Boolean(detailPostId)}
+        onClose={() => {
+          setDetailPostId(null);
+          setDetailCommentId(undefined);
+        }}
+        onOpenProfile={openMemberProfile}
+        onSearchHashtag={openHashtagExplore}
+        onRequireAuth={() => requireAuth('login')}
+      />
     </Layout>
   );
 }

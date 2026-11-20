@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   linkWithPopup,
@@ -12,6 +12,7 @@ import {
   updateProfile,
   User,
 } from 'firebase/auth';
+import { DocumentSnapshot } from 'firebase/firestore';
 import { auth, googleProvider, testFirestoreConnection } from '../lib/firebase';
 import {
   checkIsAdmin,
@@ -20,12 +21,30 @@ import {
   getUserPrivateSettings,
   getUserProfile,
 } from '../services/userService';
+import { fetchPlatformSettings, subscribeConversations } from '../services/socialService';
 import {
-  fetchPlatformSettings,
-  subscribeConversations,
-  subscribeNotifications,
-} from '../services/socialService';
-import { PlatformSettings, UserPrivateSettings, UserProfile } from '../types';
+  fetchNotificationsPage,
+  getDefaultNotificationPreferences,
+  getOrInitNotificationPreferences,
+  isNotificationEnabledForPreferences,
+  subscribeIncomingFriendRequests,
+  subscribeNotificationsFeed,
+} from '../services/notificationService';
+import {
+  getBrowserNotificationPermission,
+  registerFcmTokenForUser,
+  subscribeForegroundPushMessages,
+  unregisterCurrentFcmToken,
+} from '../services/fcmService';
+import {
+  FriendRequest,
+  NotificationItem,
+  NotificationPreferences,
+  PlatformSettings,
+  UserPrivateSettings,
+  UserProfile,
+} from '../types';
+import { useToast } from './ToastContext';
 import { playSound } from '../utils/soundVfx';
 
 export interface PendingOnboardingDraft {
@@ -33,21 +52,33 @@ export interface PendingOnboardingDraft {
   username: string;
   hostel: string;
   avatarUrl: string;
+  coverUrl?: string;
 }
 
 interface AuthContextValue {
   firebaseUser: User | null;
   profile: UserProfile | null;
   privateSettings: UserPrivateSettings | null;
+  notificationPreferences: NotificationPreferences | null;
   platformSettings: PlatformSettings;
   isAdmin: boolean;
   authReady: boolean;
   connectionOk: boolean;
   needsOnboarding: boolean;
   needsVerification: boolean;
+  notifications: NotificationItem[];
+  notificationsLoading: boolean;
+  notificationsError: string | null;
+  hasMoreNotifications: boolean;
+  loadingMoreNotifications: boolean;
+  incomingFriendRequests: FriendRequest[];
   unreadNotifications: number;
   unreadMessages: number;
   pendingDraft: PendingOnboardingDraft | null;
+  loadMoreNotifications: () => Promise<void>;
+  refreshNotifications: () => void;
+  setNotificationPreferences: React.Dispatch<React.SetStateAction<NotificationPreferences | null>>;
+  enablePushNotifications: () => Promise<{ ok: boolean; reason?: string }>;
   signInWithGoogle: () => Promise<void>;
   linkGoogleAccount: () => Promise<void>;
   signUpWithEmail: (params: {
@@ -57,6 +88,7 @@ interface AuthContextValue {
     username: string;
     hostel?: string;
     avatarUrl?: string;
+    coverUrl?: string;
   }) => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   sendResetEmail: (email: string) => Promise<void>;
@@ -67,6 +99,7 @@ interface AuthContextValue {
     username: string;
     hostel?: string;
     avatarUrl?: string;
+    coverUrl?: string;
   }) => Promise<void>;
   refreshUserState: () => Promise<void>;
   refreshPlatformSettings: () => Promise<void>;
@@ -88,18 +121,36 @@ const DEFAULT_PLATFORM: PlatformSettings = {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { showToast } = useToast();
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [privateSettings, setPrivateSettings] = useState<UserPrivateSettings | null>(null);
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<NotificationPreferences | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>(DEFAULT_PLATFORM);
   const [isAdmin, setIsAdmin] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [connectionOk, setConnectionOk] = useState(true);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
+
+  // Shared real-time notification state (single Firestore listener per session)
+  const [realtimeNotifications, setRealtimeNotifications] = useState<NotificationItem[]>([]);
+  const [olderNotifications, setOlderNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLastDoc, setNotificationsLastDoc] = useState<DocumentSnapshot | null>(null);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
+  const [loadingMoreNotifications, setLoadingMoreNotifications] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [notifRefreshTick, setNotifRefreshTick] = useState(0);
+
+  const [incomingFriendRequests, setIncomingFriendRequests] = useState<FriendRequest[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
+
   const seenNotifIdsRef = useRef<Set<string>>(new Set());
   const notifInitializedRef = useRef(false);
   const prevUnreadMsgsRef = useRef<number | null>(null);
+  const prefsRef = useRef<NotificationPreferences | null>(null);
+  prefsRef.current = notificationPreferences;
+
   const [pendingDraft, setPendingDraft] = useState<PendingOnboardingDraft | null>(() => {
     try {
       const saved = localStorage.getItem(DRAFT_KEY);
@@ -115,10 +166,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadUserRecords = useCallback(async (user: User) => {
-    const [prof, privInitial, adminFlag] = await Promise.all([
+    const [prof, privInitial, adminFlag, notifPrefs] = await Promise.all([
       getUserProfile(user.uid),
       getUserPrivateSettings(user.uid),
       checkIsAdmin(user.uid, user.email, user.emailVerified),
+      user.emailVerified
+        ? getOrInitNotificationPreferences(user.uid)
+        : Promise.resolve(getDefaultNotificationPreferences(user.uid)),
     ]);
     let priv = privInitial;
     if (prof && !priv && user.emailVerified) {
@@ -131,6 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(prof);
     setPrivateSettings(priv);
     setIsAdmin(adminFlag);
+    setNotificationPreferences(notifPrefs);
     return prof;
   }, []);
 
@@ -143,7 +198,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         try {
           const loadedProfile = await loadUserRecords(user);
-          // If the user just verified their email and had a saved onboarding draft, auto-create profile
           if (!loadedProfile && user.emailVerified) {
             const rawDraft = localStorage.getItem(DRAFT_KEY);
             if (rawDraft) {
@@ -156,9 +210,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   username: draft.username,
                   hostel: draft.hostel,
                   avatarUrl: draft.avatarUrl,
+                  coverUrl: draft.coverUrl,
                 });
                 setProfile(created.profile);
                 setPrivateSettings(created.settings);
+                const prefs = await getOrInitNotificationPreferences(user.uid);
+                setNotificationPreferences(prefs);
                 localStorage.removeItem(DRAFT_KEY);
                 setPendingDraft(null);
               } catch {
@@ -169,12 +226,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {
           setProfile(null);
           setPrivateSettings(null);
+          setNotificationPreferences(null);
         }
       } else {
         setProfile(null);
         setPrivateSettings(null);
+        setNotificationPreferences(null);
         setIsAdmin(false);
-        setUnreadNotifications(0);
+        setRealtimeNotifications([]);
+        setOlderNotifications([]);
+        setIncomingFriendRequests([]);
         setUnreadMessages(0);
       }
       setAuthReady(true);
@@ -183,35 +244,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsub();
   }, [loadUserRecords, refreshPlatformSettings]);
 
-  // Real-time notification and unread message counters + sound VFX triggers
+  // Real-time shared notification, friend request, and unread message listeners
   useEffect(() => {
     if (!authReady || !firebaseUser || !profile) {
       seenNotifIdsRef.current.clear();
       notifInitializedRef.current = false;
       prevUnreadMsgsRef.current = null;
+      setRealtimeNotifications([]);
+      setOlderNotifications([]);
+      setIncomingFriendRequests([]);
+      setNotificationsLoading(false);
+      setNotificationsError(null);
       return;
     }
 
     seenNotifIdsRef.current.clear();
     notifInitializedRef.current = false;
     prevUnreadMsgsRef.current = null;
+    setNotificationsLoading(true);
+    setNotificationsError(null);
 
-    const unsubNotifs = subscribeNotifications(firebaseUser.uid, (items) => {
-      const unreadCount = items.filter((n) => !n.isRead).length;
-      setUnreadNotifications(unreadCount);
+    const PAGE_SIZE = 60;
+    const unsubNotifs = subscribeNotificationsFeed(
+      firebaseUser.uid,
+      PAGE_SIZE,
+      (items, lastDoc) => {
+        setRealtimeNotifications(items);
+        setNotificationsLastDoc(lastDoc);
+        setHasMoreNotifications(items.length >= PAGE_SIZE);
+        setNotificationsLoading(false);
+        setNotificationsError(null);
 
-      if (!notifInitializedRef.current) {
+        if (!notifInitializedRef.current) {
+          items.forEach((n) => seenNotifIdsRef.current.add(n.id));
+          notifInitializedRef.current = true;
+          return;
+        }
+
+        const newUnread = items.filter(
+          (n) =>
+            !n.isRead &&
+            !seenNotifIdsRef.current.has(n.id) &&
+            isNotificationEnabledForPreferences(n.type, prefsRef.current)
+        );
         items.forEach((n) => seenNotifIdsRef.current.add(n.id));
-        notifInitializedRef.current = true;
-        return;
-      }
 
-      const hasNewUnread = items.some((n) => !n.isRead && !seenNotifIdsRef.current.has(n.id));
-      items.forEach((n) => seenNotifIdsRef.current.add(n.id));
-      if (hasNewUnread) {
-        playSound('notification');
+        if (newUnread.length > 0) {
+          playSound('notification');
+        }
+      },
+      () => {
+        setNotificationsLoading(false);
+        setNotificationsError('Unable to load notifications right now.');
       }
-    });
+    );
+
+    const unsubFriendRequests = subscribeIncomingFriendRequests(
+      firebaseUser.uid,
+      (requests) => {
+        setIncomingFriendRequests(requests);
+      }
+    );
 
     const unsubConvs = subscribeConversations(firebaseUser.uid, (convs) => {
       const totalUnread = convs.reduce((acc, c) => {
@@ -228,9 +321,96 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       unsubNotifs();
+      unsubFriendRequests();
       unsubConvs();
     };
-  }, [authReady, firebaseUser, profile]);
+  }, [authReady, firebaseUser, profile, notifRefreshTick]);
+
+  // Register device FCM token & listen for foreground push payloads
+  useEffect(() => {
+    if (!authReady || !firebaseUser || !profile) return;
+
+    const permission = getBrowserNotificationPermission();
+    if (permission === 'granted' && notificationPreferences?.pushEnabled !== false) {
+      void registerFcmTokenForUser(firebaseUser.uid, false);
+    }
+
+    let unsubFcm = () => {};
+    let active = true;
+
+    void subscribeForegroundPushMessages((payload) => {
+      if (!active) return;
+      const notifType = payload.data?.type;
+      if (
+        notifType &&
+        !isNotificationEnabledForPreferences(notifType as NotificationItem['type'], prefsRef.current)
+      ) {
+        return;
+      }
+      const title = payload.notification?.title || payload.data?.title || 'Hostel Friend';
+      const description = payload.notification?.body || payload.data?.body || '';
+      showToast({
+        type: 'info',
+        title,
+        description: description || undefined,
+      });
+    }).then((unsub) => {
+      if (active) {
+        unsubFcm = unsub;
+      } else {
+        unsub();
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubFcm();
+    };
+  }, [authReady, firebaseUser, profile, notificationPreferences?.pushEnabled, showToast]);
+
+  const notifications = useMemo(() => {
+    const mergedMap = new Map<string, NotificationItem>();
+    for (const item of realtimeNotifications) {
+      mergedMap.set(item.id, item);
+    }
+    for (const item of olderNotifications) {
+      if (!mergedMap.has(item.id)) {
+        mergedMap.set(item.id, item);
+      }
+    }
+    return Array.from(mergedMap.values()).sort(
+      (a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)
+    );
+  }, [realtimeNotifications, olderNotifications]);
+
+  const unreadNotifications = useMemo(() => {
+    return notifications.filter(
+      (n) => !n.isRead && isNotificationEnabledForPreferences(n.type, notificationPreferences)
+    ).length;
+  }, [notifications, notificationPreferences]);
+
+  const loadMoreNotifications = useCallback(async () => {
+    if (!firebaseUser || !notificationsLastDoc || loadingMoreNotifications) return;
+    setLoadingMoreNotifications(true);
+    try {
+      const page = await fetchNotificationsPage(firebaseUser.uid, notificationsLastDoc, 40);
+      setOlderNotifications((prev) => [...prev, ...page.items]);
+      setNotificationsLastDoc(page.lastDoc);
+      setHasMoreNotifications(page.hasMore);
+    } finally {
+      setLoadingMoreNotifications(false);
+    }
+  }, [firebaseUser, notificationsLastDoc, loadingMoreNotifications]);
+
+  const refreshNotifications = useCallback(() => {
+    setOlderNotifications([]);
+    setNotifRefreshTick((t) => t + 1);
+  }, []);
+
+  const enablePushNotifications = useCallback(async () => {
+    if (!firebaseUser) return { ok: false, reason: 'Please sign in first.' };
+    return registerFcmTokenForUser(firebaseUser.uid, true);
+  }, [firebaseUser]);
 
   const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, googleProvider);
@@ -253,6 +433,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     username: string;
     hostel?: string;
     avatarUrl?: string;
+    coverUrl?: string;
   }) => {
     if (!platformSettings.allowNewRegistrations) {
       throw new Error('New member registrations are temporarily paused by administrators.');
@@ -267,6 +448,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       username: params.username.trim(),
       hostel: (params.hostel || '').trim(),
       avatarUrl: params.avatarUrl || '',
+      coverUrl: params.coverUrl || '',
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     setPendingDraft(draft);
@@ -303,9 +485,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           username: pendingDraft.username,
           hostel: pendingDraft.hostel,
           avatarUrl: pendingDraft.avatarUrl,
+          coverUrl: pendingDraft.coverUrl,
         });
         setProfile(created.profile);
         setPrivateSettings(created.settings);
+        const prefs = await getOrInitNotificationPreferences(updatedUser.uid);
+        setNotificationPreferences(prefs);
         localStorage.removeItem(DRAFT_KEY);
         setPendingDraft(null);
       }
@@ -319,6 +504,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     username: string;
     hostel?: string;
     avatarUrl?: string;
+    coverUrl?: string;
   }) => {
     if (!auth.currentUser) throw new Error('Please sign in first.');
     if (!platformSettings.allowNewRegistrations) {
@@ -331,9 +517,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       username: params.username,
       hostel: params.hostel,
       avatarUrl: params.avatarUrl || auth.currentUser.photoURL || '',
+      coverUrl: params.coverUrl || '',
     });
     setProfile(created.profile);
     setPrivateSettings(created.settings);
+    const prefs = await getOrInitNotificationPreferences(auth.currentUser.uid);
+    setNotificationPreferences(prefs);
     localStorage.removeItem(DRAFT_KEY);
     setPendingDraft(null);
   };
@@ -344,8 +533,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    const uid = auth.currentUser?.uid || profile?.uid || '';
+    if (uid) {
+      await unregisterCurrentFcmToken(uid);
+    }
     localStorage.removeItem(DRAFT_KEY);
     setPendingDraft(null);
+    setRealtimeNotifications([]);
+    setOlderNotifications([]);
+    setIncomingFriendRequests([]);
     await signOut(auth);
   };
 
@@ -358,15 +554,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         firebaseUser,
         profile,
         privateSettings,
+        notificationPreferences,
         platformSettings,
         isAdmin,
         authReady,
         connectionOk,
         needsOnboarding,
         needsVerification,
+        notifications,
+        notificationsLoading,
+        notificationsError,
+        hasMoreNotifications,
+        loadingMoreNotifications,
+        incomingFriendRequests,
         unreadNotifications,
         unreadMessages,
         pendingDraft,
+        loadMoreNotifications,
+        refreshNotifications,
+        setNotificationPreferences,
+        enablePushNotifications,
         signInWithGoogle,
         linkGoogleAccount,
         signUpWithEmail,

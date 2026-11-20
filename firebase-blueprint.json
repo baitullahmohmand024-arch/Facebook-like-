@@ -127,6 +127,9 @@
         "authorName": { "type": "string", "minLength": 1, "maxLength": 64 },
         "authorAvatarUrl": { "type": "string", "maxLength": 32768 },
         "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "parentCommentId": { "type": "string", "maxLength": 128 },
+        "replyToUserId": { "type": "string", "maxLength": 128 },
+        "replyToUsername": { "type": "string", "maxLength": 24 },
         "isPublic": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -187,12 +190,39 @@
         "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "recipientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "actorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderId": { "type": "string", "maxLength": 128 },
         "actorUsername": { "type": "string", "maxLength": 24 },
         "actorName": { "type": "string", "maxLength": 64 },
         "actorAvatarUrl": { "type": "string", "maxLength": 32768 },
-        "type": { "type": "string", "enum": ["like", "comment", "follow", "mention", "system"] },
+        "type": {
+          "type": "string",
+          "enum": [
+            "NEW_MESSAGE",
+            "POST_LIKE",
+            "POST_COMMENT",
+            "COMMENT_REPLY",
+            "NEW_FOLLOWER",
+            "FRIEND_REQUEST",
+            "FRIEND_REQUEST_ACCEPTED",
+            "USER_MENTION",
+            "IMPORTANT_APP_ANNOUNCEMENT",
+            "like",
+            "comment",
+            "follow",
+            "mention",
+            "system"
+          ]
+        },
+        "title": { "type": "string", "maxLength": 120 },
+        "body": { "type": "string", "maxLength": 280 },
         "postId": { "type": "string", "maxLength": 128 },
-        "message": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "relatedPostId": { "type": "string", "maxLength": 128 },
+        "relatedCommentId": { "type": "string", "maxLength": 128 },
+        "relatedConversationId": { "type": "string", "maxLength": 128 },
+        "relatedMessageId": { "type": "string", "maxLength": 128 },
+        "relatedRequestId": { "type": "string", "maxLength": 128 },
+        "actionUrl": { "type": "string", "maxLength": 256 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 280 },
         "isRead": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -209,6 +239,87 @@
         "isRead",
         "createdAt"
       ]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Friend request between two hostel members.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderUsername": { "type": "string", "maxLength": 24 },
+        "senderName": { "type": "string", "maxLength": 64 },
+        "senderAvatarUrl": { "type": "string", "maxLength": 32768 },
+        "recipientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recipientUsername": { "type": "string", "maxLength": 24 },
+        "recipientName": { "type": "string", "maxLength": 64 },
+        "recipientAvatarUrl": { "type": "string", "maxLength": 32768 },
+        "participantIds": { "type": "array", "maxLength": 2 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "senderId",
+        "senderUsername",
+        "senderName",
+        "senderAvatarUrl",
+        "recipientId",
+        "recipientUsername",
+        "recipientName",
+        "recipientAvatarUrl",
+        "participantIds",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "NotificationPreferences": {
+      "title": "NotificationPreferences",
+      "description": "Per-user granular notification category and push preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "messages": { "type": "boolean" },
+        "likes": { "type": "boolean" },
+        "comments": { "type": "boolean" },
+        "commentReplies": { "type": "boolean" },
+        "follows": { "type": "boolean" },
+        "friendRequests": { "type": "boolean" },
+        "mentions": { "type": "boolean" },
+        "announcements": { "type": "boolean" },
+        "pushEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "messages",
+        "likes",
+        "comments",
+        "commentReplies",
+        "follows",
+        "friendRequests",
+        "mentions",
+        "announcements",
+        "pushEnabled",
+        "updatedAt"
+      ]
+    },
+    "FcmToken": {
+      "title": "FcmToken",
+      "description": "Private FCM device push token belonging to an authenticated user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "token": { "type": "string", "minLength": 10, "maxLength": 512 },
+        "platform": { "type": "string", "enum": ["web", "android-pwa", "ios-pwa"] },
+        "userAgent": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "token", "platform", "userAgent", "createdAt", "updatedAt"]
     },
     "Conversation": {
       "title": "Conversation",
@@ -341,6 +452,37 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "role", "createdAt"]
+    },
+    "Story": {
+      "title": "Story",
+      "description": "24-hour hostel student photo or video story shown at the top of the home feed.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorUsername": { "type": "string", "minLength": 3, "maxLength": 24, "pattern": "^[a-zA-Z0-9_]+$" },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "authorAvatarUrl": { "type": "string", "maxLength": 32768 },
+        "mediaUrl": { "type": "string", "maxLength": 500000 },
+        "mediaType": { "type": "string", "enum": ["image", "video"] },
+        "caption": { "type": "string", "maxLength": 280 },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "authorId",
+        "authorUsername",
+        "authorName",
+        "authorAvatarUrl",
+        "mediaUrl",
+        "mediaType",
+        "caption",
+        "visibility",
+        "createdAt",
+        "expiresAt"
+      ]
     }
   },
   "firestore": {
@@ -360,6 +502,10 @@
       "schema": { "$ref": "#/entities/Post" },
       "description": "Member photo and video posts."
     },
+    "/stories/{storyId}": {
+      "schema": { "$ref": "#/entities/Story" },
+      "description": "24-hour hostel member stories."
+    },
     "/comments/{commentId}": {
       "schema": { "$ref": "#/entities/Comment" },
       "description": "Comments linked to posts."
@@ -375,6 +521,18 @@
     "/savedPosts/{saveId}": {
       "schema": { "$ref": "#/entities/SavedPost" },
       "description": "Private user bookmarks keyed by userId_postId."
+    },
+    "/users/{userId}/notificationSettings/preferences": {
+      "schema": { "$ref": "#/entities/NotificationPreferences" },
+      "description": "Private granular notification settings per user."
+    },
+    "/users/{userId}/fcmTokens/{tokenId}": {
+      "schema": { "$ref": "#/entities/FcmToken" },
+      "description": "Private registered FCM push tokens per user device."
+    },
+    "/friendRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/FriendRequest" },
+      "description": "Friend requests between hostel members."
     },
     "/notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/Notification" },

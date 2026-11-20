@@ -899,6 +899,63 @@ export async function checkVercelBlobAvailable(forceRefresh = false): Promise<bo
   return inFlightVercelBlobProbe;
 }
 
+const SERVER_MEDIA_CACHE_KEY = 'hostelverse_server_media_v1';
+let cachedServerMediaCheck: { available: boolean; checkedAt: number } | null = null;
+let inFlightServerMediaProbe: Promise<boolean> | null = null;
+
+function writeSessionServerMediaCache(available: boolean, checkedAt: number): void {
+  cachedServerMediaCheck = { available, checkedAt };
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(SERVER_MEDIA_CACHE_KEY, JSON.stringify(cachedServerMediaCheck));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export async function checkServerMediaAvailable(forceRefresh = false): Promise<boolean> {
+  if (typeof fetch !== 'function' || typeof window === 'undefined') {
+    return false;
+  }
+
+  const now = Date.now();
+  if (!forceRefresh && cachedServerMediaCheck) {
+    const ttl = cachedServerMediaCheck.available ? 15 * 60_000 : 60_000;
+    if (now - cachedServerMediaCheck.checkedAt < ttl) {
+      return cachedServerMediaCheck.available;
+    }
+  }
+
+  if (inFlightServerMediaProbe && !forceRefresh) {
+    return inFlightServerMediaProbe;
+  }
+
+  inFlightServerMediaProbe = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+    try {
+      const res = await fetch('/api/media/status', { method: 'GET', signal: controller.signal });
+      if (!res.ok) {
+        writeSessionServerMediaCache(false, Date.now());
+        return false;
+      }
+      const data = (await res.json()) as { available?: boolean };
+      const available = Boolean(data?.available);
+      writeSessionServerMediaCache(available, Date.now());
+      return available;
+    } catch {
+      writeSessionServerMediaCache(false, Date.now());
+      return false;
+    } finally {
+      clearTimeout(timeout);
+      inFlightServerMediaProbe = null;
+    }
+  })();
+
+  return inFlightServerMediaProbe;
+}
+
 function mapStorageError(error: unknown): { message: string; retryable: boolean } {
   const code = (error as { code?: string })?.code || '';
   const msg = error instanceof Error ? error.message : String(error);
@@ -1009,10 +1066,180 @@ export function startResumableUpload(options: {
     const contentType = inferMimeType(file) || 'application/octet-stream';
     const overallStartedAt = performance.now();
 
+    const uploadViaServerMedia = (): Promise<
+      { ok: true; result: UploadResult } | { ok: false; fallback: boolean; error?: Error }
+    > => {
+      return new Promise((resolve) => {
+        if (cancelled) {
+          resolve({ ok: false, fallback: false, error: new UploadCancelledError() });
+          return;
+        }
+        const xhr = new XMLHttpRequest();
+        activeXhr = xhr;
+        const samples: { t: number; bytes: number }[] = [{ t: performance.now(), bytes: 0 }];
+
+        const emitXhr = (phase: UploadPhase, transferred: number, total: number) => {
+          if (!onProgress) return;
+          const now = performance.now();
+          const safeTotal = Math.max(total, file.size, 1);
+          const percent = Math.min(100, Math.max(0, Math.round((transferred / safeTotal) * 100)));
+          const windowCutoff = now - 3000;
+          while (samples.length > 1 && samples[0].t < windowCutoff) {
+            samples.shift();
+          }
+          const oldest = samples[0];
+          const dtSec = Math.max(0.25, (now - oldest.t) / 1000);
+          const dBytes = Math.max(0, transferred - oldest.bytes);
+          const speedBytesPerSec = transferred > 0 ? Math.round(dBytes / dtSec) : 0;
+          const remaining = Math.max(0, safeTotal - transferred);
+          const etaSeconds =
+            speedBytesPerSec > 256 && remaining > 0
+              ? Math.max(1, Math.ceil(remaining / speedBytesPerSec))
+              : null;
+
+          onProgress({
+            phase,
+            bytesTransferred: transferred,
+            totalBytes: safeTotal,
+            percent,
+            speedBytesPerSec,
+            etaSeconds,
+            elapsedMs: Math.round(now - overallStartedAt),
+            attempt: 1,
+          });
+        };
+
+        xhr.open('POST', `/api/media/upload?filename=${encodeURIComponent(storagePath)}`);
+        xhr.setRequestHeader('Content-Type', contentType);
+        emitXhr('uploading', 0, file.size);
+
+        xhr.upload.onprogress = (evt) => {
+          if (cancelled) return;
+          const now = performance.now();
+          const loaded = evt.loaded;
+          const total = evt.lengthComputable ? evt.total : file.size;
+          samples.push({ t: now, bytes: loaded });
+          emitXhr(loaded >= total ? 'verifying' : 'uploading', loaded, total);
+        };
+
+        xhr.onabort = () => {
+          activeXhr = null;
+          resolve({ ok: false, fallback: false, error: new UploadCancelledError() });
+        };
+
+        xhr.onerror = () => {
+          activeXhr = null;
+          resolve({
+            ok: false,
+            fallback: true,
+            error: new Error('Network error while uploading media to server.'),
+          });
+        };
+
+        xhr.onload = () => {
+          activeXhr = null;
+          if (cancelled) {
+            resolve({ ok: false, fallback: false, error: new UploadCancelledError() });
+            return;
+          }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const payload = JSON.parse(xhr.responseText) as {
+                url?: string;
+                pathname?: string;
+              };
+              if (!payload.url) {
+                resolve({ ok: false, fallback: true, error: new Error('Server upload response missing URL.') });
+                return;
+              }
+              emitXhr('completed', file.size, file.size);
+              resolve({
+                ok: true,
+                result: {
+                  downloadUrl: payload.url,
+                  storagePath: payload.pathname || storagePath,
+                  bytesTransferred: file.size,
+                  elapsedMs: Math.max(1, Math.round(performance.now() - overallStartedAt)),
+                },
+              });
+              return;
+            } catch {
+              resolve({ ok: false, fallback: true, error: new Error('Invalid response from server media upload.') });
+              return;
+            }
+          }
+
+          if (xhr.status === 404 || xhr.status === 503) {
+            writeSessionServerMediaCache(false, Date.now());
+            resolve({ ok: false, fallback: true });
+            return;
+          }
+
+          let errMsg = `Video upload failed (${xhr.status}).`;
+          try {
+            const parsed = JSON.parse(xhr.responseText) as { error?: string };
+            if (parsed.error) errMsg = parsed.error;
+          } catch {
+            // ignore JSON parse failure
+          }
+          resolve({ ok: false, fallback: false, error: new Error(errMsg) });
+        };
+
+        xhr.send(file);
+      });
+    };
+
+    const readSmallVideoAsDataUrl = (): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string' && reader.result.length <= 480000) {
+            resolve(reader.result);
+          } else {
+            reject(new Error('Video file is too large for inline fallback.'));
+          }
+        };
+        reader.onerror = () => reject(new Error('Could not read video file.'));
+        reader.readAsDataURL(file);
+      });
+
     const directInlineFallback = async (): Promise<UploadResult> => {
       if (!contentType.startsWith('image/')) {
+        const serverMediaReady = await checkServerMediaAvailable(true);
+        if (serverMediaReady) {
+          const serverOutcome = await uploadViaServerMedia();
+          if (serverOutcome.ok === true) {
+            return serverOutcome.result;
+          }
+          if (!serverOutcome.fallback) {
+            throw serverOutcome.error || new Error('Video upload failed.');
+          }
+        }
+
+        if (file.size <= 350 * 1024) {
+          const videoDataUrl = await readSmallVideoAsDataUrl();
+          if (cancelled) throw new UploadCancelledError();
+          const elapsedMs = Math.max(1, Math.round(performance.now() - overallStartedAt));
+          onProgress?.({
+            phase: 'completed',
+            bytesTransferred: file.size,
+            totalBytes: file.size,
+            percent: 100,
+            speedBytesPerSec: Math.round(file.size / Math.max(0.02, elapsedMs / 1000)),
+            etaSeconds: 0,
+            elapsedMs,
+            attempt: 1,
+          });
+          return {
+            downloadUrl: videoDataUrl,
+            storagePath: `direct/${storagePath}`,
+            bytesTransferred: file.size,
+            elapsedMs,
+          };
+        }
+
         throw new Error(
-          'Video uploads require BLOB_READ_WRITE_TOKEN (Vercel Blob) or Firebase Storage to be enabled. Photographs and Text-Only posts publish directly right now.'
+          'Video upload server is unavailable right now. Please try again in a moment or choose a shorter clip.'
         );
       }
 
@@ -1270,8 +1497,8 @@ export function startResumableUpload(options: {
           if (cancelled || fallbackTriggered) return;
           if (typeof navigator !== 'undefined' && !navigator.onLine) return;
           const idleMs = performance.now() - lastProgressAt;
-          // If an image sits at 0 bytes for >2.5s, Storage handshake is blocked/stalled: switch to direct publish
-          if (lastTransferred === 0 && idleMs >= 2500 && contentType.startsWith('image/')) {
+          // If an upload sits at 0 bytes for >2.5s, Storage handshake is blocked/stalled: switch to server/direct publish
+          if (lastTransferred === 0 && idleMs >= 2500) {
             fallbackTriggered = true;
             cleanupListeners();
             try {
@@ -1320,7 +1547,6 @@ export function startResumableUpload(options: {
             }
             const code = (error as { code?: string })?.code || '';
             if (
-              contentType.startsWith('image/') &&
               lastTransferred === 0 &&
               (code === 'storage/bucket-not-found' || code === 'storage/unknown' || code === 'storage/retry-limit-exceeded')
             ) {

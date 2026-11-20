@@ -27,12 +27,17 @@ import {
   UserProfile,
 } from '../types';
 import { getConversationId } from '../utils/formatters';
+import {
+  createAppNotification,
+  markAllNotificationsRead as markAllNotifsRead,
+  markNotificationRead as markNotifRead,
+} from './notificationService';
 
 export function subscribeNotifications(
   uid: string,
   callback: (items: NotificationItem[]) => void
 ): Unsubscribe {
-  const q = query(collection(db, 'notifications'), where('recipientId', '==', uid), limit(60));
+  const q = query(collection(db, 'notifications'), where('recipientId', '==', uid), limit(80));
   return onSnapshot(
     q,
     (snapshot) => {
@@ -44,27 +49,8 @@ export function subscribeNotifications(
   );
 }
 
-export async function markNotificationRead(id: string): Promise<void> {
-  try {
-    await updateDoc(doc(db, 'notifications', id), { isRead: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `notifications/${id}`);
-  }
-}
-
-export async function markAllNotificationsRead(items: NotificationItem[]): Promise<void> {
-  const unread = items.filter((n) => !n.isRead);
-  if (unread.length === 0) return;
-  const batch = writeBatch(db);
-  for (const item of unread) {
-    batch.update(doc(db, 'notifications', item.id), { isRead: true });
-  }
-  try {
-    await batch.commit();
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, 'notifications');
-  }
-}
+export const markNotificationRead = markNotifRead;
+export const markAllNotificationsRead = markAllNotifsRead;
 
 export function subscribeConversations(
   uid: string,
@@ -148,15 +134,14 @@ export function subscribeMessages(
 export async function sendMessage(
   conversation: Conversation,
   senderId: string,
-  text: string
+  text: string,
+  senderProfile?: UserProfile
 ): Promise<void> {
   const clean = text.trim().slice(0, 1000);
   if (!clean) return;
 
-  const recipientId =
-    conversation.participantAId === senderId
-      ? conversation.participantBId
-      : conversation.participantAId;
+  const senderIsA = conversation.participantAId === senderId;
+  const recipientId = senderIsA ? conversation.participantBId : conversation.participantAId;
   const recipientIsA = conversation.participantAId === recipientId;
 
   const msgRef = doc(collection(db, 'conversations', conversation.id, 'messages'));
@@ -190,6 +175,43 @@ export async function sendMessage(
       OperationType.WRITE,
       `conversations/${conversation.id}/messages/${msgRef.id}`
     );
+  }
+
+  // Create recipient in-app notification for real-time bell & push routing
+  if (recipientId && recipientId !== senderId) {
+    const actor: UserProfile = senderProfile || {
+      uid: senderId,
+      username: senderIsA ? conversation.participantAUsername : conversation.participantBUsername,
+      usernameLower: (senderIsA
+        ? conversation.participantAUsername
+        : conversation.participantBUsername
+      ).toLowerCase(),
+      fullName: senderIsA ? conversation.participantAName : conversation.participantBName,
+      bio: '',
+      hostel: '',
+      avatarUrl: senderIsA ? conversation.participantAAvatar : conversation.participantBAvatar,
+      coverUrl: '',
+      followersCount: 0,
+      followingCount: 0,
+      postsCount: 0,
+      isSuspended: false,
+      createdAt: null,
+      updatedAt: null,
+    };
+
+    void createAppNotification({
+      recipientId,
+      actor,
+      type: 'NEW_MESSAGE',
+      title: 'Hostel Friend',
+      body: `${actor.fullName} sent you a message.`,
+      message: `sent you a message: "${clean.slice(0, 80)}"`,
+      relatedConversationId: conversation.id,
+      relatedMessageId: msgRef.id,
+      actionUrl: `/?view=messages&conversationId=${encodeURIComponent(conversation.id)}&uid=${encodeURIComponent(senderId)}`,
+    }).catch(() => {
+      // Never block message delivery if notification creation fails
+    });
   }
 }
 

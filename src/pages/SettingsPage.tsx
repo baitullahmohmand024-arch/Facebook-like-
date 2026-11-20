@@ -5,18 +5,26 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth';
-import { Bell, Lock, LogOut, ShieldAlert, Trash2, User, Volume2 } from 'lucide-react';
+import { Bell, BellRing, Lock, LogOut, ShieldAlert, Trash2, User, Volume2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { UserProfile } from '../types';
+import { NotificationPreferences, UserProfile } from '../types';
 import {
   deleteOwnAccountRecords,
   getUserProfile,
   updateUserPrivateSettings,
   updateUserProfile,
 } from '../services/userService';
+import { updateNotificationPreferences } from '../services/notificationService';
+import {
+  getBrowserNotificationPermission,
+  getPushSupportState,
+  PushSupportState,
+  unregisterCurrentFcmToken,
+} from '../services/fcmService';
 import { Avatar } from '../components/Avatar';
 import { AvatarUploadCard } from '../components/AvatarUploadCard';
+import { CoverUploadCard } from '../components/CoverUploadCard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PWAInstallButton } from '../components/PWAInstallButton';
 import { sanitizeUsername } from '../utils/formatters';
@@ -37,8 +45,11 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
     firebaseUser,
     profile,
     privateSettings,
+    notificationPreferences,
     setProfile,
     setPrivateSettings,
+    setNotificationPreferences,
+    enablePushNotifications,
     linkGoogleAccount,
     logout,
   } = useAuth();
@@ -64,8 +75,15 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => isSoundVfxEnabled());
+  const [pushSupport, setPushSupport] = useState<PushSupportState>('supported');
+  const [pushBusy, setPushBusy] = useState(false);
+  const [browserPerm, setBrowserPerm] = useState<NotificationPermission | 'unsupported'>(() =>
+    getBrowserNotificationPermission()
+  );
 
   useEffect(() => {
+    getPushSupportState().then(setPushSupport);
+    setBrowserPerm(getBrowserNotificationPermission());
     return subscribeSoundPreference(setSoundEnabled);
   }, []);
 
@@ -178,16 +196,47 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
     }
   };
 
-  const handleToggleNotify = async (
-    field: 'notifyLikes' | 'notifyComments' | 'notifyFollows' | 'notifyMessages',
+  const handleTogglePreference = async (
+    field: keyof Omit<NotificationPreferences, 'uid' | 'updatedAt' | 'pushEnabled'>,
     nextVal: boolean
   ) => {
-    if (!profile || !privateSettings) return;
+    if (!profile) return;
     try {
-      const updated = await updateUserPrivateSettings(profile.uid, { [field]: nextVal });
-      setPrivateSettings(updated);
+      const updated = await updateNotificationPreferences(profile.uid, { [field]: nextVal });
+      setNotificationPreferences(updated);
     } catch {
       showToast({ type: 'error', title: 'Could not update notification preference' });
+    }
+  };
+
+  const handleTogglePushNotifications = async (nextEnabled: boolean) => {
+    if (!profile || pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (nextEnabled) {
+        const res = await enablePushNotifications();
+        setBrowserPerm(getBrowserNotificationPermission());
+        if (!res.ok) {
+          showToast({
+            type: 'info',
+            title: 'Push notifications',
+            description: res.reason,
+          });
+          return;
+        }
+        const updated = await updateNotificationPreferences(profile.uid, { pushEnabled: true });
+        setNotificationPreferences(updated);
+        showToast({ type: 'success', title: 'Push notifications enabled' });
+      } else {
+        await unregisterCurrentFcmToken(profile.uid);
+        const updated = await updateNotificationPreferences(profile.uid, { pushEnabled: false });
+        setNotificationPreferences(updated);
+        showToast({ type: 'info', title: 'Push notifications disabled on this device' });
+      }
+    } catch {
+      showToast({ type: 'error', title: 'Could not update push setting' });
+    } finally {
+      setPushBusy(false);
     }
   };
 
@@ -240,8 +289,9 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
         </p>
       </div>
 
-      {/* Upload Your Avatar */}
+      {/* Upload Your Avatar & Cover Photo */}
       <AvatarUploadCard />
+      <CoverUploadCard />
 
       {/* Edit Account */}
       <form
@@ -437,15 +487,59 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
         </div>
 
         <div className="space-y-3 pt-2 border-t border-white/[0.06]">
+          <div className="rounded-xl bg-[#0A0A0C] border border-[#F5C542]/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <BellRing className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-[#F8F9FA]">
+                  Push Notifications (Web & Android PWA)
+                </p>
+                <p className="text-xs text-[#A1A1AA] mt-0.5 leading-relaxed">
+                  {pushSupport === 'ios-needs-install'
+                    ? 'On iPhone/iPad Safari, add Hostel Friend to your Home Screen first (iOS 16.4+) to enable push alerts.'
+                    : pushSupport === 'missing-vapid'
+                    ? 'In-app alerts are active. Add VITE_FIREBASE_VAPID_KEY to finish activating background Web Push.'
+                    : pushSupport === 'unsupported-browser'
+                    ? 'Your current browser or embedded preview frame blocks PushManager.'
+                    : browserPerm === 'denied'
+                    ? 'Notifications are blocked in your browser site settings. Re-enable them in browser permissions.'
+                    : notificationPreferences?.pushEnabled && browserPerm === 'granted'
+                    ? 'Active on this device. You will receive push alerts for enabled categories.'
+                    : 'Receive real-time alerts even when the app is minimized or closed.'}
+                </p>
+              </div>
+            </div>
+            <label className="inline-flex items-center gap-2 shrink-0 cursor-pointer self-end sm:self-center">
+              <span className="text-xs text-[#A1A1AA]">
+                {pushBusy
+                  ? 'Updating...'
+                  : notificationPreferences?.pushEnabled && browserPerm === 'granted'
+                  ? 'Enabled'
+                  : 'Off'}
+              </span>
+              <input
+                type="checkbox"
+                disabled={pushBusy}
+                checked={Boolean(notificationPreferences?.pushEnabled && browserPerm === 'granted')}
+                onChange={(e) => void handleTogglePushNotifications(e.target.checked)}
+                className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
+              />
+            </label>
+          </div>
+
           {(
             [
-              { key: 'notifyLikes', label: 'Likes on your posts' },
-              { key: 'notifyComments', label: 'New comments & replies' },
-              { key: 'notifyFollows', label: 'New followers' },
-              { key: 'notifyMessages', label: 'Direct message alerts' },
+              { key: 'messages', label: 'Direct messages' },
+              { key: 'likes', label: 'Likes on your posts' },
+              { key: 'comments', label: 'Comments on your posts' },
+              { key: 'commentReplies', label: 'Replies to your comments' },
+              { key: 'follows', label: 'New followers' },
+              { key: 'friendRequests', label: 'Friend requests & acceptances' },
+              { key: 'mentions', label: '@Mentions in posts and comments' },
+              { key: 'announcements', label: 'Important Hostel Friend announcements' },
             ] as const
           ).map((item) => {
-            const checked = privateSettings ? privateSettings[item.key] : true;
+            const checked = notificationPreferences ? notificationPreferences[item.key] : true;
             return (
               <label
                 key={item.key}
@@ -455,7 +549,7 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
                 <input
                   type="checkbox"
                   checked={checked}
-                  onChange={(e) => handleToggleNotify(item.key, e.target.checked)}
+                  onChange={(e) => void handleTogglePreference(item.key, e.target.checked)}
                   className="w-4 h-4 accent-[#D4AF37]"
                 />
               </label>
