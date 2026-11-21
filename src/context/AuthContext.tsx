@@ -1,16 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ConfirmationResult,
   createUserWithEmailAndPassword,
-  linkWithPhoneNumber,
   linkWithPopup,
   onAuthStateChanged,
-  RecaptchaVerifier,
   reload,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
-  signInWithPhoneNumber,
   signInWithPopup,
   signOut,
   updateProfile,
@@ -34,6 +30,7 @@ import {
   isNotificationEnabledForPreferences,
   subscribeAllFriendRequests,
   subscribeNotificationsFeed,
+  updateNotificationPreferences,
 } from '../services/notificationService';
 import {
   getBrowserNotificationPermission,
@@ -88,10 +85,6 @@ interface AuthContextValue {
   enablePushNotifications: () => Promise<{ ok: boolean; reason?: string }>;
   signInWithGoogle: () => Promise<void>;
   linkGoogleAccount: () => Promise<void>;
-  sendPhoneOtp: (phoneNumberE164: string, verifier: RecaptchaVerifier) => Promise<ConfirmationResult>;
-  confirmPhoneOtp: (confirmation: ConfirmationResult, code: string) => Promise<void>;
-  sendLinkPhoneOtp: (phoneNumberE164: string, verifier: RecaptchaVerifier) => Promise<ConfirmationResult>;
-  confirmLinkPhoneOtp: (confirmation: ConfirmationResult, code: string) => Promise<void>;
   signUpWithEmail: (params: {
     email: string;
     password: string;
@@ -355,10 +348,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!authReady || !firebaseUser || !profile) return;
 
-    const permission = getBrowserNotificationPermission();
-    if (permission === 'granted' && notificationPreferences?.pushEnabled === true) {
-      void registerFcmTokenForUser(firebaseUser.uid, false);
-    }
+    const syncTokenIfReady = () => {
+      const permission = getBrowserNotificationPermission();
+      if (permission === 'granted' && prefsRef.current?.pushEnabled === true) {
+        void registerFcmTokenForUser(firebaseUser.uid, false);
+      }
+    };
+
+    syncTokenIfReady();
+
+    const onControllerChange = () => {
+      syncTokenIfReady();
+    };
+    const swContainer = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+    swContainer?.addEventListener?.('controllerchange', onControllerChange);
 
     let unsubFcm = () => {};
     let active = true;
@@ -389,6 +392,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       active = false;
+      swContainer?.removeEventListener?.('controllerchange', onControllerChange);
       unsubFcm();
     };
   }, [authReady, firebaseUser, profile, notificationPreferences?.pushEnabled, showToast]);
@@ -440,7 +444,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const enablePushNotifications = useCallback(async () => {
     if (!firebaseUser) return { ok: false, reason: 'Please sign in first.' };
-    return registerFcmTokenForUser(firebaseUser.uid, true);
+    const result = await registerFcmTokenForUser(firebaseUser.uid, true);
+    if (result.ok) {
+      try {
+        const updated = await updateNotificationPreferences(firebaseUser.uid, {
+          pushEnabled: true,
+        });
+        setNotificationPreferences(updated);
+      } catch {
+        setNotificationPreferences((prev) =>
+          prev ? { ...prev, pushEnabled: true } : prev
+        );
+      }
+    }
+    return result;
   }, [firebaseUser]);
 
   const signInWithGoogle = async () => {
@@ -452,29 +469,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const linkGoogleAccount = async () => {
     if (!auth.currentUser) throw new Error('Please sign in first.');
     const result = await linkWithPopup(auth.currentUser, googleProvider);
-    await result.user.getIdToken(true);
-    setFirebaseUser({ ...result.user } as User);
-    await loadUserRecords(result.user);
-  };
-
-  const sendPhoneOtp = async (phoneNumberE164: string, verifier: RecaptchaVerifier) => {
-    return signInWithPhoneNumber(auth, phoneNumberE164, verifier);
-  };
-
-  const confirmPhoneOtp = async (confirmation: ConfirmationResult, code: string) => {
-    const result = await confirmation.confirm(code.trim());
-    await result.user.getIdToken(true);
-    setFirebaseUser(result.user);
-    await loadUserRecords(result.user);
-  };
-
-  const sendLinkPhoneOtp = async (phoneNumberE164: string, verifier: RecaptchaVerifier) => {
-    if (!auth.currentUser) throw new Error('Please sign in first.');
-    return linkWithPhoneNumber(auth.currentUser, phoneNumberE164, verifier);
-  };
-
-  const confirmLinkPhoneOtp = async (confirmation: ConfirmationResult, code: string) => {
-    const result = await confirmation.confirm(code.trim());
     await result.user.getIdToken(true);
     setFirebaseUser({ ...result.user } as User);
     await loadUserRecords(result.user);
@@ -633,10 +627,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enablePushNotifications,
         signInWithGoogle,
         linkGoogleAccount,
-        sendPhoneOtp,
-        confirmPhoneOtp,
-        sendLinkPhoneOtp,
-        confirmLinkPhoneOtp,
         signUpWithEmail,
         loginWithEmail,
         sendResetEmail,

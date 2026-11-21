@@ -1,31 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ConfirmationResult, RecaptchaVerifier } from 'firebase/auth';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
   Image as ImageIcon,
   Mail,
-  Phone,
   RefreshCw,
   ShieldCheck,
-  Smartphone,
   Upload,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { auth } from '../lib/firebase';
 import { checkUsernameAvailable } from '../services/userService';
 import { uploadMediaFile, validateMediaFile } from '../services/mediaService';
 import { sanitizeUsername } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
-import {
-  COUNTRY_DIAL_CODES,
-  mapPhoneAuthError,
-  normalizePhoneToE164,
-} from '../utils/phoneAuth';
 
 interface AuthPageProps {
-  initialMode?: 'login' | 'signup' | 'forgot' | 'phone';
+  initialMode?: 'login' | 'signup' | 'forgot';
   onBackToLanding: () => void;
   onAuthenticated: () => void;
 }
@@ -43,8 +34,6 @@ export function AuthPage({
     pendingDraft,
     platformSettings,
     signInWithGoogle,
-    sendPhoneOtp,
-    confirmPhoneOtp,
     signUpWithEmail,
     loginWithEmail,
     sendResetEmail,
@@ -55,15 +44,7 @@ export function AuthPage({
   } = useAuth();
   const { showToast } = useToast();
 
-  const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'phone'>(initialMode);
-  const [dialCode, setDialCode] = useState('+92');
-  const [phoneInput, setPhoneInput] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [sentPhoneE164, setSentPhoneE164] = useState('');
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState(
@@ -88,38 +69,15 @@ export function AuthPage({
   }, [initialMode]);
 
   useEffect(() => {
+    setErrorMsg('');
+    setSuccessMsg('');
+  }, [needsVerification, needsOnboarding]);
+
+  useEffect(() => {
     if (profile) {
       onAuthenticated();
     }
   }, [profile, onAuthenticated]);
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = window.setInterval(() => {
-      setResendCooldown((prev) => (prev > 1 ? prev - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [resendCooldown]);
-
-  const clearRecaptcha = () => {
-    if (recaptchaVerifierRef.current) {
-      try {
-        recaptchaVerifierRef.current.clear();
-      } catch {
-        // Ignore clear errors if widget was already torn down
-      }
-      recaptchaVerifierRef.current = null;
-    }
-    if (recaptchaContainerRef.current) {
-      recaptchaContainerRef.current.innerHTML = '';
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      clearRecaptcha();
-    };
-  }, []);
 
   const prefilledUidRef = React.useRef<string | null>(null);
   useEffect(() => {
@@ -157,7 +115,8 @@ export function AuthPage({
               return;
             }
           } catch {
-            // Fall back to base candidate
+            // Stop probing additional candidates if Firestore rules/network fail
+            break;
           }
         }
         if (!cancelled) {
@@ -292,76 +251,6 @@ export function AuthPage({
       setSuccessMsg('Account created! Check your inbox for the verification link to continue.');
     } catch (err) {
       setErrorMsg(mapAuthError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getOrCreateRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
-    clearRecaptcha();
-    const container = recaptchaContainerRef.current;
-    if (!container) {
-      throw new Error('Verification container is not ready. Please try again.');
-    }
-    const verifier = new RecaptchaVerifier(auth, container, {
-      size: 'invisible',
-      'expired-callback': () => {
-        clearRecaptcha();
-      },
-    });
-    await verifier.render();
-    recaptchaVerifierRef.current = verifier;
-    return verifier;
-  };
-
-  const handleSendPhoneCode = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    const normalized = normalizePhoneToE164(phoneInput, dialCode);
-    if (!normalized) {
-      setErrorMsg('Please enter a valid mobile number (e.g., 0300 1234567 or +923001234567).');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const verifier = await getOrCreateRecaptchaVerifier();
-      const result = await sendPhoneOtp(normalized, verifier);
-      setConfirmationResult(result);
-      setSentPhoneE164(normalized);
-      setOtpCode('');
-      setResendCooldown(30);
-      setSuccessMsg(`6-digit verification code sent to ${normalized}.`);
-      showToast({ type: 'success', title: 'Verification SMS sent' });
-    } catch (err) {
-      clearRecaptcha();
-      setErrorMsg(mapPhoneAuthError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyPhoneCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!confirmationResult) return;
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    const cleanCode = otpCode.replace(/\D/g, '');
-    if (cleanCode.length !== 6) {
-      setErrorMsg('Please enter the 6-digit SMS verification code.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await confirmPhoneOtp(confirmationResult, cleanCode);
-      clearRecaptcha();
-      showToast({ type: 'success', title: 'Phone number verified' });
-    } catch (err) {
-      setErrorMsg(mapPhoneAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -554,15 +443,17 @@ export function AuthPage({
           className="glass-surface w-full max-w-md rounded-2xl p-7 border border-white/10"
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 min-w-0">
               <img
                 src="/icons/icon-192.png"
                 alt="Hostel Friend"
-                className="w-7 h-7 rounded-lg object-cover border border-white/15"
+                className="w-7 h-7 rounded-lg object-cover border border-white/15 shrink-0"
               />
-              <span className="font-display font-bold text-lg text-[#F8F9FA]">Hostel Friend</span>
+              <span className="font-display font-bold text-base sm:text-lg text-[#F8F9FA] whitespace-nowrap">
+                Hostel Friend
+              </span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 shrink-0 whitespace-nowrap">
               <button
                 type="button"
                 disabled={loading}
@@ -596,16 +487,14 @@ export function AuthPage({
             )}
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-[#F8F9FA] truncate">
-                {firebaseUser.displayName ||
-                  (firebaseUser.phoneNumber ? 'Phone Number Verified' : 'Account Connected')}
+                {firebaseUser.displayName || 'Account Connected'}
               </p>
               <p className="text-[11px] text-[#A1A1AA] truncate">
-                {firebaseUser.email || firebaseUser.phoneNumber || 'Verified Member'}
+                {firebaseUser.email || 'Verified Member'}
               </p>
             </div>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#D4AF37] shrink-0">
-              <CheckCircle2 className="w-3.5 h-3.5" />{' '}
-              {firebaseUser.phoneNumber && !firebaseUser.email ? 'Verified' : 'Connected'}
+              <CheckCircle2 className="w-3.5 h-3.5" /> Connected
             </span>
           </div>
 
@@ -791,25 +680,19 @@ export function AuthPage({
               ? 'Welcome back'
               : mode === 'signup'
               ? 'Start Account Setup'
-              : mode === 'phone'
-              ? 'Phone Verification'
               : 'Reset password'}
           </h1>
           <p className="mt-1.5 text-sm text-[#A1A1AA]">
             {mode === 'login'
-              ? 'Connect Google, verify your phone number, or sign in with email.'
+              ? 'Connect Google or sign in with your Hostel Friend email.'
               : mode === 'signup'
-              ? 'Connect Google, verify with your phone number, or sign up with email.'
-              : mode === 'phone'
-              ? confirmationResult
-                ? `Enter the 6-digit SMS code sent to ${sentPhoneE164}.`
-                : 'Enter your mobile number to receive a one-time SMS verification code.'
+              ? 'Connect your Google account or sign up with email.'
               : 'Enter your account email to receive a password reset link.'}
           </p>
 
           {/* Segmented Mode Switcher */}
           {mode !== 'forgot' && (
-            <div className="mt-5 grid grid-cols-3 gap-1 p-1 bg-[#0A0A0C] rounded-xl border border-white/[0.06]">
+            <div className="mt-5 grid grid-cols-2 gap-1 p-1 bg-[#0A0A0C] rounded-xl border border-white/[0.06]">
               <button
                 type="button"
                 onClick={() => {
@@ -840,22 +723,6 @@ export function AuthPage({
               >
                 Account Setup
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('phone');
-                  setErrorMsg('');
-                  setSuccessMsg('');
-                }}
-                className={`py-2 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                  mode === 'phone'
-                    ? 'bg-[#151519] text-[#D4AF37] border border-[#D4AF37]/40'
-                    : 'text-[#A1A1AA] hover:text-[#F8F9FA]'
-                }`}
-              >
-                <Phone className="w-3 h-3" />
-                <span>Phone OTP</span>
-              </button>
             </div>
           )}
 
@@ -873,7 +740,7 @@ export function AuthPage({
             </div>
           )}
 
-          {mode !== 'forgot' && mode !== 'phone' && (
+          {mode !== 'forgot' && (
             <div className="mt-5 space-y-2.5">
               <button
                 type="button"
@@ -908,145 +775,11 @@ export function AuthPage({
                 </span>
               </button>
 
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => {
-                  setMode('phone');
-                  setErrorMsg('');
-                  setSuccessMsg('');
-                }}
-                className="w-full py-3 px-4 rounded-xl text-sm font-semibold border border-white/15 bg-[#0A0A0C] text-[#F8F9FA] hover:border-[#D4AF37]/60 hover:bg-white/[0.04] transition-colors flex items-center justify-center gap-2.5 disabled:opacity-50"
-              >
-                <Smartphone className="w-4 h-4 text-[#D4AF37] shrink-0" />
-                <span>Continue with Phone Number</span>
-              </button>
-
               <div className="pt-2 pb-1 flex items-center gap-3 text-xs text-[#71717A]">
                 <div className="flex-1 h-px bg-white/[0.08]" />
                 <span>{mode === 'signup' ? 'or set up with email' : 'or sign in with email'}</span>
                 <div className="flex-1 h-px bg-white/[0.08]" />
               </div>
-            </div>
-          )}
-
-          {mode === 'phone' && (
-            <div className="mt-5">
-              {!confirmationResult ? (
-                <form onSubmit={handleSendPhoneCode} className="space-y-4">
-                  <div>
-                    <span className="block text-xs font-medium text-[#A1A1AA] mb-1.5">
-                      Mobile Number
-                    </span>
-                    <div className="flex gap-2">
-                      <select
-                        aria-label="Country dial code"
-                        value={dialCode}
-                        onChange={(e) => setDialCode(e.target.value)}
-                        className="rounded-xl bg-[#0A0A0C] border border-white/10 px-2.5 py-2.5 text-xs sm:text-sm text-[#F8F9FA] focus:outline-none focus:border-[#D4AF37] shrink-0"
-                      >
-                        {COUNTRY_DIAL_CODES.map((opt) => (
-                          <option key={opt.code} value={opt.code}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="tel"
-                        inputMode="tel"
-                        autoComplete="tel"
-                        required
-                        value={phoneInput}
-                        onChange={(e) => setPhoneInput(e.target.value)}
-                        placeholder={
-                          COUNTRY_DIAL_CODES.find((c) => c.code === dialCode)?.example ||
-                          '300 1234567'
-                        }
-                        className="min-w-0 flex-1 rounded-xl bg-[#0A0A0C] border border-white/10 px-3.5 py-2.5 text-sm text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37]"
-                      />
-                    </div>
-                    {(() => {
-                      const preview = normalizePhoneToE164(phoneInput, dialCode);
-                      return (
-                        <p className="mt-1.5 text-[11px] text-[#71717A]">
-                          {preview
-                            ? `Verification SMS will be sent to ${preview}`
-                            : 'Enter your mobile number or full international format starting with +.'}
-                        </p>
-                      );
-                    })()}
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full gold-gradient-btn py-2.5 px-4 rounded-xl text-sm font-semibold disabled:opacity-50"
-                  >
-                    {loading ? 'Sending Verification Code...' : 'Send Verification Code'}
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleVerifyPhoneCode} className="space-y-4">
-                  <div className="rounded-xl bg-[#0A0A0C] border border-white/[0.08] px-3.5 py-2.5 flex items-center justify-between gap-2">
-                    <span className="text-xs text-[#A1A1AA] truncate">
-                      Code sent to <strong className="text-[#F8F9FA]">{sentPhoneE164}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => {
-                        clearRecaptcha();
-                        setConfirmationResult(null);
-                        setOtpCode('');
-                        setErrorMsg('');
-                        setSuccessMsg('');
-                      }}
-                      className="text-xs font-medium text-[#D4AF37] hover:text-[#E7C96F] shrink-0"
-                    >
-                      Change
-                    </button>
-                  </div>
-
-                  <label className="block text-xs font-medium text-[#A1A1AA]">
-                    6-Digit Verification Code
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      required
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="123456"
-                      className="mt-1.5 w-full rounded-xl bg-[#0A0A0C] border border-white/10 px-3.5 py-3 text-center font-mono text-lg tracking-[0.4em] text-[#F8F9FA] placeholder:text-[#71717A] placeholder:tracking-normal focus:outline-none focus:border-[#D4AF37]"
-                    />
-                  </label>
-
-                  <button
-                    type="submit"
-                    disabled={loading || otpCode.length !== 6}
-                    className="w-full gold-gradient-btn py-2.5 px-4 rounded-xl text-sm font-semibold disabled:opacity-50"
-                  >
-                    {loading ? 'Verifying Code...' : 'Verify & Continue'}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={loading || resendCooldown > 0}
-                    onClick={() => void handleSendPhoneCode()}
-                    className="w-full py-2 text-xs font-medium text-[#A1A1AA] hover:text-[#F8F9FA] disabled:opacity-50"
-                  >
-                    {resendCooldown > 0
-                      ? `Resend code in ${resendCooldown}s`
-                      : 'Resend Verification Code'}
-                  </button>
-                </form>
-              )}
-
-              <div ref={recaptchaContainerRef} className="mt-3 flex justify-center" />
-              <p className="mt-2 text-[11px] text-center text-[#71717A]">
-                Protected by Firebase Phone Verification &amp; Google reCAPTCHA.
-              </p>
             </div>
           )}
 

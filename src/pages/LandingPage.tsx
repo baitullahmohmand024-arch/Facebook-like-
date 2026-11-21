@@ -6,7 +6,6 @@ import {
   Compass,
   GraduationCap,
   MapPin,
-  Phone,
   Quote,
   Settings,
   User,
@@ -19,7 +18,6 @@ interface LandingPageProps {
   onLogin: () => void;
   onExploreCommunity: () => void;
   onConnectGoogle?: () => Promise<void> | void;
-  onContinueWithPhone?: () => void;
   connectingGoogle?: boolean;
 }
 
@@ -69,7 +67,6 @@ export function LandingPage({
   onLogin,
   onExploreCommunity,
   onConnectGoogle,
-  onContinueWithPhone,
   connectingGoogle = false,
 }: LandingPageProps) {
   const [heroImgFailed, setHeroImgFailed] = useState(false);
@@ -290,18 +287,6 @@ export function LandingPage({
                 />
               </svg>
               <span>{connectingGoogle ? 'Connecting...' : 'Connect with Google'}</span>
-            </button>
-          )}
-
-          {/* Continue with Phone Number */}
-          {onContinueWithPhone && (
-            <button
-              type="button"
-              onClick={onContinueWithPhone}
-              className="w-full py-3.5 px-6 rounded-full bg-[#101010] border border-white/25 hover:border-[#F5C542] hover:bg-[#171717] text-[#FFFFFF] font-display font-semibold text-base flex items-center justify-center gap-3 active:scale-[0.99] transition-all"
-            >
-              <Phone className="w-4 h-4 text-[#F5C542] shrink-0" />
-              <span>Continue with Phone Number</span>
             </button>
           )}
 

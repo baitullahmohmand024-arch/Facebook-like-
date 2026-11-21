@@ -119,6 +119,7 @@ async function createNotificationIfAbsent(params: {
   actionUrl: string;
   dedupeField?: keyof NotificationDoc;
   dedupeValue?: string;
+  dedupeMatchType?: boolean;
 }): Promise<void> {
   if (!params.recipientId || params.recipientId === params.actorId) return;
   if (await isActorBlockedByRecipient(params.recipientId, params.actorId)) return;
@@ -128,9 +129,17 @@ async function createNotificationIfAbsent(params: {
       .collection('notifications')
       .where('recipientId', '==', params.recipientId)
       .where(params.dedupeField, '==', params.dedupeValue)
-      .limit(1)
+      .limit(params.dedupeMatchType ? 10 : 1)
       .get();
-    if (!existingSnap.empty) return;
+    if (params.dedupeMatchType) {
+      const targetCanonical = normalizeType(params.type);
+      const alreadyExists = existingSnap.docs.some(
+        (d) => normalizeType((d.data() as NotificationDoc).type) === targetCanonical
+      );
+      if (alreadyExists) return;
+    } else if (!existingSnap.empty) {
+      return;
+    }
   }
 
   const actorSnap = await db.doc(`users/${params.actorId}`).get();
@@ -171,7 +180,7 @@ export const onNotificationCreated = onDocumentCreated(
   },
   async (event) => {
     const notif = event.data?.data() as NotificationDoc | undefined;
-    if (!notif || !notif.recipientId) return;
+    if (!notif || !notif.recipientId || notif.actorId === notif.recipientId) return;
 
     const [prefsSnap, privSnap, tokensSnap] = await Promise.all([
       db.doc(`users/${notif.recipientId}/notificationSettings/preferences`).get(),
@@ -196,30 +205,31 @@ export const onNotificationCreated = onDocumentCreated(
     if (tokens.length === 0) return;
 
     const canonical = normalizeType(notif.type);
-    const title = notif.title || 'Hostel Friend';
-    const body =
+    const title = (notif.title || 'Hostel Friend').slice(0, 120);
+    const body = (
       notif.body ||
       (canonical === 'IMPORTANT_APP_ANNOUNCEMENT'
         ? notif.message
-        : `${notif.actorName} ${notif.message}`);
-    const actionUrl = notif.actionUrl || '/?view=notifications';
+        : `${notif.actorName || 'Someone'} ${notif.message}`)
+    ).slice(0, 280);
+    const actionUrl =
+      notif.actionUrl && notif.actionUrl.startsWith('/')
+        ? notif.actionUrl
+        : '/?view=notifications';
+    const tag =
+      canonical === 'NEW_MESSAGE' && notif.relatedConversationId
+        ? `chat-${notif.relatedConversationId}`
+        : notif.id;
 
+    // Send high-urgency data-only WebPush so unified /sw.js handles background display,
+    // Android vibration/renotify grouping, and exact deep-link click routing without
+    // Firebase SW's built-in click listener or relative webpush.fcmOptions.link errors.
     const response = await messaging.sendEachForMulticast({
       tokens: tokens.map((t) => t.token),
-      notification: {
-        title,
-        body,
-      },
       webpush: {
-        notification: {
-          title,
-          body,
-          icon: '/icons/icon-192.png',
-          badge: '/icons/icon-192.png',
-          tag: notif.id,
-        },
-        fcmOptions: {
-          link: actionUrl,
+        headers: {
+          Urgency: 'high',
+          TTL: '86400',
         },
       },
       data: {
@@ -227,6 +237,11 @@ export const onNotificationCreated = onDocumentCreated(
         type: canonical,
         title,
         body,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        tag,
+        renotify: canonical === 'NEW_MESSAGE' ? 'true' : 'false',
+        timestamp: String(Date.now()),
         actionUrl,
         actorId: notif.actorId || '',
         relatedPostId: notif.relatedPostId || notif.postId || '',
@@ -243,7 +258,8 @@ export const onNotificationCreated = onDocumentCreated(
         const code = res.error.code;
         if (
           code === 'messaging/registration-token-not-registered' ||
-          code === 'messaging/invalid-registration-token'
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/mismatched-credential'
         ) {
           cleanupPromises.push(tokens[idx].ref.delete().catch(() => {}));
         }
@@ -268,15 +284,16 @@ export const onMessageCreated = onDocumentCreated(
     if (!msg) return;
 
     const actorSnap = await db.doc(`users/${msg.senderId}`).get();
-    const senderName = (actorSnap.data()?.fullName as string) || 'Someone';
+    const senderName = (actorSnap.data()?.fullName as string) || 'Hostel Member';
+    const preview = (msg.text || '').trim().slice(0, 140) || 'Sent you a message.';
 
     await createNotificationIfAbsent({
       recipientId: msg.recipientId,
       actorId: msg.senderId,
       type: 'NEW_MESSAGE',
-      title: 'Hostel Friend',
-      body: `${senderName} sent you a message.`,
-      message: `sent you a message: "${(msg.text || '').slice(0, 80)}"`,
+      title: senderName,
+      body: preview,
+      message: `sent you a message: "${preview.slice(0, 80)}"`,
       relatedConversationId: msg.conversationId,
       relatedMessageId: msg.id,
       actionUrl: `/?view=messages&conversationId=${encodeURIComponent(msg.conversationId)}&uid=${encodeURIComponent(msg.senderId)}`,
@@ -304,11 +321,14 @@ export const onLikeCreated = onDocumentCreated(
     const existingSnap = await db
       .collection('notifications')
       .where('recipientId', '==', postAuthorId)
-      .where('actorId', '==', like.userId)
       .where('relatedPostId', '==', like.postId)
-      .limit(1)
+      .limit(20)
       .get();
-    if (!existingSnap.empty) return;
+    const alreadyNotifiedLike = existingSnap.docs.some((d) => {
+      const data = d.data() as NotificationDoc;
+      return data.actorId === like.userId && normalizeType(data.type) === 'POST_LIKE';
+    });
+    if (alreadyNotifiedLike) return;
 
     const actorSnap = await db.doc(`users/${like.userId}`).get();
     const actorName = (actorSnap.data()?.fullName as string) || 'Someone';
@@ -327,7 +347,7 @@ export const onLikeCreated = onDocumentCreated(
   }
 );
 
-// 4. Comment, Reply & Mention Trigger
+// 4. Comment & Reply Trigger
 export const onCommentCreated = onDocumentCreated(
   {
     document: 'comments/{commentId}',
@@ -356,7 +376,7 @@ export const onCommentCreated = onDocumentCreated(
         actorId: comment.authorId,
         type: 'COMMENT_REPLY',
         title: 'New Reply',
-        body: `${comment.authorName} replied to your comment.`,
+        body: `${comment.authorName} replied to your comment: "${comment.text.slice(0, 80)}"`,
         message: `replied to your comment: "${comment.text.slice(0, 60)}"`,
         postId: comment.postId,
         relatedPostId: comment.postId,
@@ -364,6 +384,7 @@ export const onCommentCreated = onDocumentCreated(
         actionUrl: `/?view=feed&post=${encodeURIComponent(comment.postId)}&commentId=${encodeURIComponent(comment.id)}`,
         dedupeField: 'relatedCommentId',
         dedupeValue: comment.id,
+        dedupeMatchType: true,
       });
     }
 
@@ -374,7 +395,7 @@ export const onCommentCreated = onDocumentCreated(
         actorId: comment.authorId,
         type: 'POST_COMMENT',
         title: 'New Comment',
-        body: `${comment.authorName} commented on your post.`,
+        body: `${comment.authorName} commented on your post: "${comment.text.slice(0, 80)}"`,
         message: `commented on your post: "${comment.text.slice(0, 60)}"`,
         postId: comment.postId,
         relatedPostId: comment.postId,
@@ -382,6 +403,7 @@ export const onCommentCreated = onDocumentCreated(
         actionUrl: `/?view=feed&post=${encodeURIComponent(comment.postId)}&commentId=${encodeURIComponent(comment.id)}`,
         dedupeField: 'relatedCommentId',
         dedupeValue: comment.id,
+        dedupeMatchType: true,
       });
     }
   }
@@ -401,10 +423,12 @@ export const onFollowCreated = onDocumentCreated(
       .collection('notifications')
       .where('recipientId', '==', follow.followingId)
       .where('actorId', '==', follow.followerId)
-      .where('type', '==', 'NEW_FOLLOWER')
-      .limit(1)
+      .limit(10)
       .get();
-    if (!existingSnap.empty) return;
+    const alreadyNotifiedFollow = existingSnap.docs.some(
+      (d) => normalizeType((d.data() as NotificationDoc).type) === 'NEW_FOLLOWER'
+    );
+    if (alreadyNotifiedFollow) return;
 
     const actorSnap = await db.doc(`users/${follow.followerId}`).get();
     const actorName = (actorSnap.data()?.fullName as string) || 'Someone';
@@ -444,6 +468,7 @@ export const onFriendRequestCreated = onDocumentCreated(
       actionUrl: `/?view=notifications&tab=requests&requestId=${encodeURIComponent(req.id)}`,
       dedupeField: 'relatedRequestId',
       dedupeValue: req.id,
+      dedupeMatchType: true,
     });
   }
 );
@@ -460,14 +485,16 @@ export const onFriendRequestUpdated = onDocumentUpdated(
       | undefined;
     if (!before || !after) return;
     if (before.status === 'pending' && after.status === 'accepted') {
-      const existingAccepted = await db
+      const existingSnap = await db
         .collection('notifications')
         .where('recipientId', '==', after.senderId)
         .where('relatedRequestId', '==', after.id)
-        .where('type', '==', 'FRIEND_REQUEST_ACCEPTED')
-        .limit(1)
+        .limit(10)
         .get();
-      if (!existingAccepted.empty) return;
+      const alreadyAccepted = existingSnap.docs.some(
+        (d) => normalizeType((d.data() as NotificationDoc).type) === 'FRIEND_REQUEST_ACCEPTED'
+      );
+      if (alreadyAccepted) return;
 
       await createNotificationIfAbsent({
         recipientId: after.senderId,
@@ -522,6 +549,7 @@ export const onPostCreated = onDocumentCreated(
           actionUrl: `/?view=feed&post=${encodeURIComponent(post.id)}`,
           dedupeField: 'relatedPostId',
           dedupeValue: post.id,
+          dedupeMatchType: true,
         });
       })
     );

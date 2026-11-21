@@ -114,6 +114,12 @@ self.addEventListener('message', (event) => {
   }
 });
 
+type ExtendedSwNotificationOptions = NotificationOptions & {
+  renotify?: boolean;
+  vibrate?: number[];
+  timestamp?: number;
+};
+
 // Unified Firebase Cloud Messaging background handler
 try {
   const firebaseApp = initializeApp(firebaseConfig);
@@ -128,15 +134,27 @@ try {
     const body = data.body || 'You have a new notification.';
     const icon = data.icon || '/icons/icon-192.png';
     const badge = data.badge || '/icons/icon-192.png';
-    const tag = data.tag || data.notificationId || `hf-${Date.now()}`;
+    const isMessage = data.type === 'NEW_MESSAGE';
+    const tag =
+      data.tag ||
+      (isMessage && data.relatedConversationId
+        ? `chat-${data.relatedConversationId}`
+        : data.notificationId || `hf-${Date.now()}`);
+    const renotify = data.renotify === 'true' || isMessage;
+    const parsedTs = data.timestamp ? Number(data.timestamp) : NaN;
 
-    return self.registration.showNotification(title, {
+    const options: ExtendedSwNotificationOptions = {
       body,
       icon,
       badge,
       tag,
+      renotify,
+      vibrate: [200, 100, 200],
+      timestamp: Number.isFinite(parsedTs) ? parsedTs : Date.now(),
       data,
-    });
+    };
+
+    return self.registration.showNotification(title, options);
   });
 } catch {
   // FCM background setup skipped when runtime lacks PushManager

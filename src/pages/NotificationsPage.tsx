@@ -27,7 +27,6 @@ import {
   markNotificationRead,
   normalizeNotificationType,
   respondToFriendRequest,
-  updateNotificationPreferences,
 } from '../services/notificationService';
 import {
   getBrowserNotificationPermission,
@@ -79,7 +78,6 @@ export function NotificationsPage({
     refreshNotifications,
     enablePushNotifications,
     notificationPreferences,
-    setNotificationPreferences,
   } = useAuth();
   const { showToast } = useToast();
 
@@ -256,12 +254,6 @@ export function NotificationsPage({
       setBrowserPermission(getBrowserNotificationPermission());
       void getPushSupportState().then(setPushSupport);
       if (res.ok) {
-        if (profile) {
-          const updated = await updateNotificationPreferences(profile.uid, { pushEnabled: true });
-          setNotificationPreferences(updated);
-        } else if (notificationPreferences) {
-          setNotificationPreferences({ ...notificationPreferences, pushEnabled: true });
-        }
         showToast({ type: 'success', title: 'Push notifications enabled for this device' });
       } else {
         showToast({
@@ -325,7 +317,11 @@ export function NotificationsPage({
       </div>
 
       {/* Optional Push Prompt Card */}
-      {browserPermission === 'default' && pushSupport === 'supported' && (
+      {pushSupport === 'supported' &&
+        (browserPermission === 'default' ||
+          (browserPermission === 'granted' &&
+            notificationPreferences !== null &&
+            !notificationPreferences.pushEnabled)) && (
         <div className="rounded-2xl bg-[#111114] border border-[#F5C542]/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#F5C542]/15 border border-[#F5C542]/35 flex items-center justify-center shrink-0">

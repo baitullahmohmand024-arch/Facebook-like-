@@ -85,6 +85,8 @@ async function getActiveMessagingServiceWorker(timeoutMs = 12000): Promise<Servi
   let reg = await navigator.serviceWorker.getRegistration('/');
   if (!reg) {
     reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  } else {
+    void reg.update().catch(() => {});
   }
 
   const readyPromise = navigator.serviceWorker.ready;
@@ -99,6 +101,9 @@ async function getActiveMessagingServiceWorker(timeoutMs = 12000): Promise<Servi
   });
 
   const readyReg = await Promise.race([readyPromise, timeoutPromise]);
+  if (readyReg.waiting) {
+    readyReg.waiting.postMessage({ type: 'SKIP_WAITING' });
+  }
   if (readyReg.active) return readyReg;
 
   const pendingWorker = readyReg.installing || readyReg.waiting || reg.installing || reg.waiting;

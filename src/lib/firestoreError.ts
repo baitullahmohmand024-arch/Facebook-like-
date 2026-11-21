@@ -65,7 +65,7 @@ export function formatUserFriendlyError(
       const parsed = JSON.parse(raw) as Partial<FirestoreErrorInfo>;
       const inner = parsed.error || '';
       if (inner.toLowerCase().includes('permission') || inner.toLowerCase().includes('insufficient')) {
-        return 'Permission denied while saving or loading your data. Please ensure you are signed in with a verified account and try again.';
+        return 'Permission denied by Firestore rules. Ensure your account is verified and the latest firestore.rules are published to your Firebase project.';
       }
       if (inner.toLowerCase().includes('offline') || inner.toLowerCase().includes('network')) {
         return 'Unable to reach the database. Please check your internet connection.';

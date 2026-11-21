@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Bell,
+  BellRing,
   Compass,
   Film,
   Home,
@@ -14,8 +15,16 @@ import {
   User,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import { AppView, UserProfile } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import {
+  getBrowserNotificationPermission,
+  getPushSupportState,
+  PushSupportState,
+} from '../services/fcmService';
 import { Avatar } from './Avatar';
 import { PWAInstallButton } from './PWAInstallButton';
 import {
@@ -47,11 +56,71 @@ export function Layout({
   onLogout,
   children,
 }: LayoutProps) {
+  const { notificationPreferences, enablePushNotifications } = useAuth();
+  const { showToast } = useToast();
   const [soundOn, setSoundOn] = useState(() => isSoundVfxEnabled());
+  const [pushSupport, setPushSupport] = useState<PushSupportState>('unsupported-browser');
+  const [browserPerm, setBrowserPerm] = useState<NotificationPermission | 'unsupported'>(() =>
+    getBrowserNotificationPermission()
+  );
+  const [enablingPush, setEnablingPush] = useState(false);
+  const [pushPromptDismissed, setPushPromptDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('hf_push_prompt_dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     return subscribeSoundPreference(setSoundOn);
   }, []);
+
+  useEffect(() => {
+    setBrowserPerm(getBrowserNotificationPermission());
+    void getPushSupportState().then(setPushSupport);
+  }, [activeView, notificationPreferences?.pushEnabled]);
+
+  const showPushBanner =
+    Boolean(profile) &&
+    !pushPromptDismissed &&
+    pushSupport === 'supported' &&
+    (browserPerm === 'default' ||
+      (browserPerm === 'granted' && notificationPreferences !== null && !notificationPreferences.pushEnabled));
+
+  const dismissPushBanner = () => {
+    setPushPromptDismissed(true);
+    try {
+      sessionStorage.setItem('hf_push_prompt_dismissed', '1');
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const handleEnablePushFromBanner = async () => {
+    if (enablingPush) return;
+    setEnablingPush(true);
+    try {
+      const res = await enablePushNotifications();
+      setBrowserPerm(getBrowserNotificationPermission());
+      void getPushSupportState().then(setPushSupport);
+      if (res.ok) {
+        showToast({
+          type: 'success',
+          title: 'Push notifications enabled',
+          description: 'You will receive alerts when Hostel Friend is in the background or closed.',
+        });
+      } else {
+        showToast({
+          type: 'info',
+          title: 'Push notifications',
+          description: res.reason,
+        });
+      }
+    } finally {
+      setEnablingPush(false);
+    }
+  };
   const desktopNav: {
     id: AppView;
     label: string;
@@ -283,7 +352,44 @@ export function Layout({
             {maintenanceNotice}
           </div>
         )}
-        <div className="max-w-5xl mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6">{children}</div>
+        <div className="max-w-5xl mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6">
+          {showPushBanner && (
+            <div className="mb-4 rounded-2xl bg-[#111114] border border-[#F5C542]/30 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
+              <div className="flex items-start sm:items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-[#F5C542]/15 border border-[#F5C542]/35 flex items-center justify-center shrink-0">
+                  <BellRing className="w-4 h-4 text-[#F5C542]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-semibold text-[#FFFFFF]">
+                    Turn on Android &amp; Web Push notifications
+                  </p>
+                  <p className="text-[11px] sm:text-xs text-[#A5A5AD]">
+                    Get instant message, reply, like, and friend request alerts even when Hostel Friend is closed.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                <button
+                  type="button"
+                  disabled={enablingPush}
+                  onClick={handleEnablePushFromBanner}
+                  className="gold-gradient-btn px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap disabled:opacity-50"
+                >
+                  {enablingPush ? 'Enabling...' : 'Enable Alerts'}
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissPushBanner}
+                  aria-label="Dismiss push notification prompt"
+                  className="p-1.5 rounded-lg text-[#A5A5AD] hover:text-[#FFFFFF] hover:bg-white/[0.06]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+          {children}
+        </div>
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
