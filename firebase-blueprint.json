@@ -340,6 +340,8 @@
         "lastMessageSenderId": { "type": "string", "maxLength": 128 },
         "unreadByA": { "type": "integer" },
         "unreadByB": { "type": "integer" },
+        "typingAAt": { "type": "string", "format": "date-time" },
+        "typingBAt": { "type": "string", "format": "date-time" },
         "lastMessageAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }

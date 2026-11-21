@@ -7,6 +7,7 @@ import {
   getOrCreateConversation,
   markConversationRead,
   sendMessage,
+  setConversationTyping,
   subscribeConversations,
   subscribeMessages,
 } from '../services/socialService';
@@ -46,6 +47,33 @@ export function MessagesPage({
   const markingReadIdsRef = useRef<Set<string>>(new Set());
   const latestMessagesRef = useRef<ChatMessage[]>([]);
 
+const TYPING_TTL_MS = 8000;
+const TYPING_IDLE_MS = 3500;
+const TYPING_HEARTBEAT_MS = 3000;
+
+function isOtherTypingInConv(conv: Conversation, myUid: string | undefined, nowMs: number): boolean {
+  if (!myUid) return false;
+  const isA = conv.participantAId === myUid;
+  const otherUid = isA ? conv.participantBId : conv.participantAId;
+  const otherTypingTs = isA ? conv.typingBAt : conv.typingAAt;
+  if (!otherTypingTs) return false;
+  const typingMs = otherTypingTs.toMillis();
+  if (nowMs - typingMs > TYPING_TTL_MS) return false;
+  if (
+    conv.lastMessageSenderId === otherUid &&
+    conv.lastMessageAt &&
+    conv.lastMessageAt.toMillis() > typingMs
+  ) {
+    return false;
+  }
+  return true;
+}
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const typingActiveRef = useRef(false);
+  const lastTypingSentAtRef = useRef(0);
+  const typingIdleTimerRef = useRef<number | null>(null);
+
   const selectedConvId = selectedConv?.id || null;
   const activeConversation = useMemo(
     () =>
@@ -60,6 +88,24 @@ export function MessagesPage({
   const blockedSet = useMemo(
     () => new Set(privateSettings?.blockedUserIds || []),
     [privateSettings]
+  );
+
+  const clearMyTyping = useCallback(
+    (targetConv?: Conversation | null) => {
+      if (typingIdleTimerRef.current !== null) {
+        window.clearTimeout(typingIdleTimerRef.current);
+        typingIdleTimerRef.current = null;
+      }
+      const conv = targetConv ?? activeConversationRef.current;
+      if (typingActiveRef.current && conv && profile) {
+        typingActiveRef.current = false;
+        lastTypingSentAtRef.current = 0;
+        void setConversationTyping(conv, profile.uid, false);
+      } else {
+        typingActiveRef.current = false;
+      }
+    },
+    [profile]
   );
 
   // Load conversations list in real time
@@ -158,6 +204,8 @@ export function MessagesPage({
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
         syncReadReceipts(latestMessagesRef.current);
+      } else {
+        clearMyTyping();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
@@ -165,10 +213,11 @@ export function MessagesPage({
 
     return () => {
       unsub();
+      clearMyTyping();
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [profile, selectedConvId, syncReadReceipts]);
+  }, [profile, selectedConvId, syncReadReceipts, clearMyTyping]);
 
   // Keep conversation unread counter cleared when new messages arrive in the active thread
   useEffect(() => {
@@ -180,6 +229,24 @@ export function MessagesPage({
     activeConversation?.unreadByB,
     syncReadReceipts,
   ]);
+
+  // Lightweight expiry ticker while any conversation has a recent typing timestamp
+  const hasAnyActiveTyping = useMemo(() => {
+    if (!profile) return false;
+    return conversations.some((conv) => isOtherTypingInConv(conv, profile.uid, nowMs));
+  }, [conversations, profile, nowMs]);
+
+  useEffect(() => {
+    if (!hasAnyActiveTyping) return;
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [hasAnyActiveTyping]);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, [conversations]);
 
   const getOtherParticipant = (conv: Conversation) => {
     if (!profile) {
@@ -212,6 +279,31 @@ export function MessagesPage({
     }
   };
 
+  const handleMessageInputChange = (nextValue: string) => {
+    setMessageText(nextValue);
+    const conv = activeConversationRef.current;
+    if (!profile || !conv) return;
+
+    if (!nextValue.trim()) {
+      clearMyTyping(conv);
+      return;
+    }
+
+    const now = Date.now();
+    if (!typingActiveRef.current || now - lastTypingSentAtRef.current >= TYPING_HEARTBEAT_MS) {
+      typingActiveRef.current = true;
+      lastTypingSentAtRef.current = now;
+      void setConversationTyping(conv, profile.uid, true);
+    }
+
+    if (typingIdleTimerRef.current !== null) {
+      window.clearTimeout(typingIdleTimerRef.current);
+    }
+    typingIdleTimerRef.current = window.setTimeout(() => {
+      clearMyTyping(conv);
+    }, TYPING_IDLE_MS);
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || !selectedConv || !messageText.trim() || sending) return;
@@ -220,6 +312,7 @@ export function MessagesPage({
       showToast({ type: 'error', title: 'Unblock this member before sending messages' });
       return;
     }
+    clearMyTyping(selectedConv);
     setSending(true);
     const outgoing = messageText;
     setMessageText('');
@@ -246,6 +339,15 @@ export function MessagesPage({
     : [];
 
   const activeOther = activeConversation ? getOtherParticipant(activeConversation) : null;
+  const isActiveOtherTyping = activeConversation
+    ? isOtherTypingInConv(activeConversation, profile?.uid, nowMs)
+    : false;
+
+  useEffect(() => {
+    if (isActiveOtherTyping) {
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
+    }
+  }, [isActiveOtherTyping]);
 
   const { lastMyMessageId, lastSeenMessageId } = useMemo(() => {
     let lastMine = '';
@@ -321,6 +423,7 @@ export function MessagesPage({
             conversations.map((conv) => {
               const other = getOtherParticipant(conv);
               const isSelected = selectedConv?.id === conv.id;
+              const isTyping = isOtherTypingInConv(conv, profile?.uid, nowMs);
               return (
                 <button
                   key={conv.id}
@@ -339,24 +442,35 @@ export function MessagesPage({
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-0.5">
-                      <div className="flex items-center gap-1 min-w-0">
-                        {conv.lastMessageText && profile && conv.lastMessageSenderId === profile.uid && (
-                          (conv.participantAId === profile.uid ? conv.unreadByB : conv.unreadByA) === 0 ? (
-                            <CheckCheck
-                              className="w-3.5 h-3.5 text-[#D4AF37] shrink-0"
-                              aria-label="Seen"
-                            />
-                          ) : (
-                            <Check
-                              className="w-3.5 h-3.5 text-[#71717A] shrink-0"
-                              aria-label="Sent"
-                            />
-                          )
-                        )}
-                        <p className="text-xs text-[#A1A1AA] truncate">
-                          {conv.lastMessageText || `@${other.username}`}
-                        </p>
-                      </div>
+                      {isTyping ? (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="inline-flex items-center gap-0.5 shrink-0" aria-hidden="true">
+                            <span className="w-1 h-1 rounded-full bg-[#F5C542] animate-bounce [animation-delay:0ms]" />
+                            <span className="w-1 h-1 rounded-full bg-[#F5C542] animate-bounce [animation-delay:150ms]" />
+                            <span className="w-1 h-1 rounded-full bg-[#F5C542] animate-bounce [animation-delay:300ms]" />
+                          </span>
+                          <p className="text-xs font-medium text-[#F5C542] truncate">typing...</p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 min-w-0">
+                          {conv.lastMessageText && profile && conv.lastMessageSenderId === profile.uid && (
+                            (conv.participantAId === profile.uid ? conv.unreadByB : conv.unreadByA) === 0 ? (
+                              <CheckCheck
+                                className="w-3.5 h-3.5 text-[#D4AF37] shrink-0"
+                                aria-label="Seen"
+                              />
+                            ) : (
+                              <Check
+                                className="w-3.5 h-3.5 text-[#71717A] shrink-0"
+                                aria-label="Sent"
+                              />
+                            )
+                          )}
+                          <p className="text-xs text-[#A1A1AA] truncate">
+                            {conv.lastMessageText || `@${other.username}`}
+                          </p>
+                        </div>
+                      )}
                       {other.unread > 0 && (
                         <span className="font-mono text-[11px] font-semibold text-[#D4AF37] shrink-0">
                           {other.unread}
@@ -399,7 +513,18 @@ export function MessagesPage({
                     <p className="text-sm font-semibold text-[#F8F9FA] group-hover:text-[#D4AF37] truncate">
                       {activeOther.name}
                     </p>
-                    <p className="text-xs text-[#A1A1AA] truncate">@{activeOther.username}</p>
+                    {isActiveOtherTyping ? (
+                      <p className="text-xs font-medium text-[#F5C542] flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                          <span className="w-1 h-1 rounded-full bg-[#F5C542] animate-bounce [animation-delay:0ms]" />
+                          <span className="w-1 h-1 rounded-full bg-[#F5C542] animate-bounce [animation-delay:150ms]" />
+                          <span className="w-1 h-1 rounded-full bg-[#F5C542] animate-bounce [animation-delay:300ms]" />
+                        </span>
+                        <span>typing...</span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-[#A1A1AA] truncate">@{activeOther.username}</p>
+                    )}
                   </div>
                 </button>
               </div>
@@ -465,6 +590,18 @@ export function MessagesPage({
                   );
                 })
               )}
+              {isActiveOtherTyping && (
+                <div className="flex items-start" role="status" aria-live="polite">
+                  <div className="rounded-2xl px-4 py-3 bg-[#151519] border border-[#F5C542]/25 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1" aria-hidden="true">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#F5C542] animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#F5C542] animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#F5C542] animate-bounce [animation-delay:300ms]" />
+                    </span>
+                    <span className="sr-only">{activeOther.name} is typing</span>
+                  </div>
+                </div>
+              )}
               <div ref={bottomRef} />
             </div>
 
@@ -476,7 +613,8 @@ export function MessagesPage({
                 type="text"
                 maxLength={1000}
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
+                onChange={(e) => handleMessageInputChange(e.target.value)}
+                onBlur={() => clearMyTyping()}
                 placeholder={`Message @${activeOther.username}...`}
                 className="flex-1 rounded-xl bg-[#0A0A0C] border border-white/10 px-4 py-2.5 text-sm text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37]"
               />

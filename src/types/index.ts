@@ -190,6 +190,8 @@ export interface Conversation {
   lastMessageSenderId: string;
   unreadByA: number;
   unreadByB: number;
+  typingAAt?: Timestamp | null;
+  typingBAt?: Timestamp | null;
   lastMessageAt: Timestamp | null;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;

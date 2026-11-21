@@ -349,7 +349,7 @@ service cloud.firestore {
         'participantAUsername', 'participantAName', 'participantAAvatar',
         'participantBUsername', 'participantBName', 'participantBAvatar',
         'lastMessageText', 'lastMessageSenderId', 'unreadByA', 'unreadByB',
-        'lastMessageAt', 'createdAt', 'updatedAt'
+        'typingAAt', 'typingBAt', 'lastMessageAt', 'createdAt', 'updatedAt'
       ])
       && isValidId(data.id)
       && data.participantIds is list && data.participantIds.size() == 2
@@ -369,6 +369,8 @@ service cloud.firestore {
       && data.lastMessageSenderId is string && data.lastMessageSenderId.size() <= 128
       && data.unreadByA is int && data.unreadByA >= 0
       && data.unreadByB is int && data.unreadByB >= 0
+      && (!('typingAAt' in data) || data.typingAAt == null || data.typingAAt is timestamp)
+      && (!('typingBAt' in data) || data.typingBAt == null || data.typingBAt is timestamp)
       && data.lastMessageAt is timestamp
       && data.createdAt is timestamp
       && data.updatedAt is timestamp;
@@ -927,7 +929,19 @@ service cloud.firestore {
                         'unreadByA', 'unreadByB', 'updatedAt'
                       ]) ||
                       // Action 2: Mark conversation read
-                      incoming().diff(existing()).affectedKeys().hasOnly(['unreadByA', 'unreadByB', 'updatedAt'])
+                      incoming().diff(existing()).affectedKeys().hasOnly(['unreadByA', 'unreadByB', 'updatedAt']) ||
+                      // Action 3: Participant A updates own typing indicator
+                      (
+                        existing().participantAId == request.auth.uid
+                        && incoming().diff(existing()).affectedKeys().hasOnly(['typingAAt', 'updatedAt'])
+                        && (incoming().typingAAt == null || incoming().typingAAt == request.time)
+                      ) ||
+                      // Action 4: Participant B updates own typing indicator
+                      (
+                        existing().participantBId == request.auth.uid
+                        && incoming().diff(existing()).affectedKeys().hasOnly(['typingBAt', 'updatedAt'])
+                        && (incoming().typingBAt == null || incoming().typingBAt == request.time)
+                      )
                     );
 
       // Messages subcollection (/conversations/{conversationId}/messages/{messageId})

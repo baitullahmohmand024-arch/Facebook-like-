@@ -258,6 +258,28 @@ export async function markConversationRead(
   }
 }
 
+export async function setConversationTyping(
+  conversation: Pick<Conversation, 'id' | 'participantAId' | 'participantBId'>,
+  myUid: string,
+  isTyping: boolean
+): Promise<void> {
+  if (!conversation?.id || !myUid) return;
+  const isA = conversation.participantAId === myUid;
+  const isB = conversation.participantBId === myUid;
+  if (!isA && !isB) return;
+
+  try {
+    await updateDoc(doc(db, 'conversations', conversation.id), {
+      ...(isA
+        ? { typingAAt: isTyping ? serverTimestamp() : null }
+        : { typingBAt: isTyping ? serverTimestamp() : null }),
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Non-critical real-time indicator; never disrupt message delivery
+  }
+}
+
 export async function createReport(params: {
   reporterId: string;
   targetType: 'post' | 'user' | 'comment';
