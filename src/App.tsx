@@ -40,7 +40,7 @@ function HostelverseRouter() {
   const { showToast } = useToast();
 
   const [view, setView] = useState<AppView>('landing');
-  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup' | 'forgot'>('login');
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'signup' | 'forgot' | 'phone'>('login');
   const [profileUserId, setProfileUserId] = useState<string>('');
   const [exploreTag, setExploreTag] = useState<string>('');
   const [messageTargetUser, setMessageTargetUser] = useState<UserProfile | null>(null);
@@ -139,7 +139,7 @@ function HostelverseRouter() {
     return () => navigator.serviceWorker.removeEventListener('message', onSwMessage);
   }, [applyDeepLink]);
 
-  const requireAuth = (mode: 'login' | 'signup' = 'login') => {
+  const requireAuth = (mode: 'login' | 'signup' | 'phone' = 'login') => {
     setAuthInitialMode(mode);
     setView('auth');
   };
@@ -308,6 +308,7 @@ function HostelverseRouter() {
         onLogin={() => requireAuth('login')}
         onExploreCommunity={() => setView('explore')}
         onConnectGoogle={handleLandingGoogleConnect}
+        onContinueWithPhone={() => requireAuth('phone')}
         connectingGoogle={connectingGoogle}
       />
     );

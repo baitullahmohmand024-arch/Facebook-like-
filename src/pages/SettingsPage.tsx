@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  ConfirmationResult,
   EmailAuthProvider,
+  RecaptchaVerifier,
   deleteUser,
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth';
-import { Bell, BellRing, Lock, LogOut, ShieldAlert, Trash2, User, Volume2 } from 'lucide-react';
+import { Bell, BellRing, Lock, LogOut, Phone, ShieldAlert, Trash2, User, Volume2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { auth } from '../lib/firebase';
 import { NotificationPreferences, UserProfile } from '../types';
 import {
   deleteOwnAccountRecords,
@@ -30,6 +33,11 @@ import { PWAInstallButton } from '../components/PWAInstallButton';
 import { sanitizeUsername } from '../utils/formatters';
 import { formatUserFriendlyError } from '../lib/firestoreError';
 import {
+  COUNTRY_DIAL_CODES,
+  mapPhoneAuthError,
+  normalizePhoneToE164,
+} from '../utils/phoneAuth';
+import {
   isSoundVfxEnabled,
   playSound,
   setSoundVfxEnabled,
@@ -51,6 +59,8 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
     setNotificationPreferences,
     enablePushNotifications,
     linkGoogleAccount,
+    sendLinkPhoneOtp,
+    confirmLinkPhoneOtp,
     logout,
   } = useAuth();
   const { showToast } = useToast();
@@ -74,6 +84,19 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
+
+  // Phone verification linking
+  const [showPhoneLinkForm, setShowPhoneLinkForm] = useState(false);
+  const [phoneDialCode, setPhoneDialCode] = useState('+92');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneOtpCode, setPhoneOtpCode] = useState('');
+  const [phoneConfirmation, setPhoneConfirmation] = useState<ConfirmationResult | null>(null);
+  const [sentLinkPhone, setSentLinkPhone] = useState('');
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const settingsRecaptchaRef = useRef<HTMLDivElement | null>(null);
+  const settingsRecaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
   const [soundEnabled, setSoundEnabled] = useState(() => isSoundVfxEnabled());
   const [pushSupport, setPushSupport] = useState<PushSupportState>('supported');
   const [pushBusy, setPushBusy] = useState(false);
@@ -81,10 +104,28 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
     getBrowserNotificationPermission()
   );
 
+  const clearSettingsRecaptcha = () => {
+    if (settingsRecaptchaVerifierRef.current) {
+      try {
+        settingsRecaptchaVerifierRef.current.clear();
+      } catch {
+        // Ignore teardown errors
+      }
+      settingsRecaptchaVerifierRef.current = null;
+    }
+    if (settingsRecaptchaRef.current) {
+      settingsRecaptchaRef.current.innerHTML = '';
+    }
+  };
+
   useEffect(() => {
     getPushSupportState().then(setPushSupport);
     setBrowserPerm(getBrowserNotificationPermission());
-    return subscribeSoundPreference(setSoundEnabled);
+    const unsubSound = subscribeSoundPreference(setSoundEnabled);
+    return () => {
+      unsubSound();
+      clearSettingsRecaptcha();
+    };
   }, []);
 
   useEffect(() => {
@@ -113,6 +154,7 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
   const hasGoogleProvider = Boolean(
     firebaseUser?.providerData.some((p) => p.providerId === 'google.com')
   );
+  const verifiedPhone = firebaseUser?.phoneNumber || '';
 
   const handleLinkGoogle = async () => {
     setLinkingGoogle(true);
@@ -127,6 +169,62 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
       });
     } finally {
       setLinkingGoogle(false);
+    }
+  };
+
+  const handleSendLinkPhoneCode = async () => {
+    setPhoneError('');
+    const normalized = normalizePhoneToE164(phoneInput, phoneDialCode);
+    if (!normalized) {
+      setPhoneError('Enter a valid mobile number (e.g., 0300 1234567 or +923001234567).');
+      return;
+    }
+    setPhoneBusy(true);
+    try {
+      clearSettingsRecaptcha();
+      if (!settingsRecaptchaRef.current) {
+        throw new Error('Verification container is not ready. Please try again.');
+      }
+      const verifier = new RecaptchaVerifier(auth, settingsRecaptchaRef.current, {
+        size: 'invisible',
+        'expired-callback': () => clearSettingsRecaptcha(),
+      });
+      await verifier.render();
+      settingsRecaptchaVerifierRef.current = verifier;
+      const result = await sendLinkPhoneOtp(normalized, verifier);
+      setPhoneConfirmation(result);
+      setSentLinkPhone(normalized);
+      setPhoneOtpCode('');
+      showToast({ type: 'success', title: 'Verification SMS sent' });
+    } catch (err) {
+      clearSettingsRecaptcha();
+      setPhoneError(mapPhoneAuthError(err));
+    } finally {
+      setPhoneBusy(false);
+    }
+  };
+
+  const handleConfirmLinkPhoneCode = async () => {
+    if (!phoneConfirmation) return;
+    setPhoneError('');
+    const cleanCode = phoneOtpCode.replace(/\D/g, '');
+    if (cleanCode.length !== 6) {
+      setPhoneError('Please enter the 6-digit SMS code.');
+      return;
+    }
+    setPhoneBusy(true);
+    try {
+      await confirmLinkPhoneOtp(phoneConfirmation, cleanCode);
+      clearSettingsRecaptcha();
+      setPhoneConfirmation(null);
+      setShowPhoneLinkForm(false);
+      setPhoneInput('');
+      setPhoneOtpCode('');
+      showToast({ type: 'success', title: 'Phone number verified and linked' });
+    } catch (err) {
+      setPhoneError(mapPhoneAuthError(err));
+    } finally {
+      setPhoneBusy(false);
     }
   };
 
@@ -355,7 +453,8 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
 
         <div className="flex items-center justify-between pt-1">
           <span className="text-xs text-[#71717A]">
-            Account email: {privateSettings?.email || firebaseUser?.email}
+            Account contact:{' '}
+            {privateSettings?.email || firebaseUser?.email || verifiedPhone || 'Verified Member'}
           </span>
           <button
             type="submit"
@@ -402,10 +501,125 @@ export function SettingsPage({ onLoggedOut }: SettingsPageProps) {
           )}
         </div>
 
+        <div className="rounded-xl bg-[#0A0A0C] border border-white/[0.08] p-3.5 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <Phone className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-[#F8F9FA]">Phone Number Verification</p>
+                <p className="text-xs text-[#A1A1AA] mt-0.5">
+                  {verifiedPhone
+                    ? `Verified phone number: ${verifiedPhone}`
+                    : 'Verify your mobile number via SMS OTP to sign in with phone.'}
+                </p>
+              </div>
+            </div>
+            {verifiedPhone ? (
+              <span className="text-xs font-medium text-[#D4AF37] shrink-0">Verified</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPhoneLinkForm((prev) => !prev);
+                  setPhoneError('');
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-[#D4AF37]/40 text-[#F8F9FA] hover:border-[#D4AF37] hover:bg-white/[0.04] shrink-0"
+              >
+                {showPhoneLinkForm ? 'Cancel' : 'Verify Phone Number'}
+              </button>
+            )}
+          </div>
+
+          {!verifiedPhone && showPhoneLinkForm && (
+            <div className="pt-3 border-t border-white/[0.06] space-y-3">
+              {phoneError && (
+                <div role="alert" className="rounded-xl bg-rose-500/10 border border-rose-500/30 p-2.5 text-xs text-rose-300">
+                  {phoneError}
+                </div>
+              )}
+
+              {!phoneConfirmation ? (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <select
+                    aria-label="Country dial code"
+                    value={phoneDialCode}
+                    onChange={(e) => setPhoneDialCode(e.target.value)}
+                    className="rounded-xl bg-[#151519] border border-white/10 px-2.5 py-2 text-xs text-[#F8F9FA] focus:outline-none focus:border-[#D4AF37]"
+                  >
+                    {COUNTRY_DIAL_CODES.map((opt) => (
+                      <option key={opt.code} value={opt.code}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    placeholder="300 1234567"
+                    className="min-w-0 flex-1 rounded-xl bg-[#151519] border border-white/10 px-3 py-2 text-xs text-[#F8F9FA] placeholder:text-[#71717A] focus:outline-none focus:border-[#D4AF37]"
+                  />
+                  <button
+                    type="button"
+                    disabled={phoneBusy}
+                    onClick={() => void handleSendLinkPhoneCode()}
+                    className="gold-gradient-btn px-4 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 shrink-0"
+                  >
+                    {phoneBusy ? 'Sending...' : 'Send Code'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs text-[#A1A1AA]">
+                    <span>
+                      Enter the 6-digit code sent to <strong className="text-[#F8F9FA]">{sentLinkPhone}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={phoneBusy}
+                      onClick={() => {
+                        clearSettingsRecaptcha();
+                        setPhoneConfirmation(null);
+                        setPhoneOtpCode('');
+                      }}
+                      className="text-[#D4AF37] hover:text-[#E7C96F]"
+                    >
+                      Change
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={phoneOtpCode}
+                      onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="123456"
+                      className="min-w-0 flex-1 rounded-xl bg-[#151519] border border-white/10 px-3 py-2 text-center font-mono text-sm tracking-[0.35em] text-[#F8F9FA] focus:outline-none focus:border-[#D4AF37]"
+                    />
+                    <button
+                      type="button"
+                      disabled={phoneBusy || phoneOtpCode.length !== 6}
+                      onClick={() => void handleConfirmLinkPhoneCode()}
+                      className="gold-gradient-btn px-4 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 shrink-0"
+                    >
+                      {phoneBusy ? 'Verifying...' : 'Verify OTP'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div ref={settingsRecaptchaRef} />
+            </div>
+          )}
+        </div>
+
         {!hasPasswordProvider ? (
           <p className="text-xs text-[#A1A1AA] leading-relaxed">
-            You sign in using Google Authentication. Your password is managed securely through your
-            Google Account.
+            {hasGoogleProvider
+              ? 'You sign in using Google Authentication. Your password is managed securely through your Google Account.'
+              : 'You sign in using verified Phone Number OTP authentication.'}
           </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

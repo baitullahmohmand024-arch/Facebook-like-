@@ -1,12 +1,16 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ConfirmationResult,
   createUserWithEmailAndPassword,
+  linkWithPhoneNumber,
   linkWithPopup,
   onAuthStateChanged,
+  RecaptchaVerifier,
   reload,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithPhoneNumber,
   signInWithPopup,
   signOut,
   updateProfile,
@@ -84,6 +88,10 @@ interface AuthContextValue {
   enablePushNotifications: () => Promise<{ ok: boolean; reason?: string }>;
   signInWithGoogle: () => Promise<void>;
   linkGoogleAccount: () => Promise<void>;
+  sendPhoneOtp: (phoneNumberE164: string, verifier: RecaptchaVerifier) => Promise<ConfirmationResult>;
+  confirmPhoneOtp: (confirmation: ConfirmationResult, code: string) => Promise<void>;
+  sendLinkPhoneOtp: (phoneNumberE164: string, verifier: RecaptchaVerifier) => Promise<ConfirmationResult>;
+  confirmLinkPhoneOtp: (confirmation: ConfirmationResult, code: string) => Promise<void>;
   signUpWithEmail: (params: {
     email: string;
     password: string;
@@ -122,6 +130,11 @@ const DEFAULT_PLATFORM: PlatformSettings = {
   updatedBy: 'system',
   updatedAt: null,
 };
+
+function isUserVerified(user: User | null): boolean {
+  if (!user) return false;
+  return Boolean(user.emailVerified || user.phoneNumber);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
@@ -170,16 +183,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadUserRecords = useCallback(async (user: User) => {
+    const verified = isUserVerified(user);
     const [prof, privInitial, adminFlag, notifPrefs] = await Promise.all([
       getUserProfile(user.uid),
       getUserPrivateSettings(user.uid),
       checkIsAdmin(user.uid, user.email, user.emailVerified),
-      user.emailVerified
+      verified
         ? getOrInitNotificationPreferences(user.uid)
         : Promise.resolve(getDefaultNotificationPreferences(user.uid)),
     ]);
     let priv = privInitial;
-    if (prof && !priv && user.emailVerified) {
+    if (prof && !priv && verified) {
       try {
         priv = await ensureUserPrivateSettings(user.uid, user.email || '');
       } catch {
@@ -202,7 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         try {
           const loadedProfile = await loadUserRecords(user);
-          if (!loadedProfile && user.emailVerified) {
+          if (!loadedProfile && isUserVerified(user)) {
             const rawDraft = localStorage.getItem(DRAFT_KEY);
             if (rawDraft) {
               try {
@@ -443,6 +457,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await loadUserRecords(result.user);
   };
 
+  const sendPhoneOtp = async (phoneNumberE164: string, verifier: RecaptchaVerifier) => {
+    return signInWithPhoneNumber(auth, phoneNumberE164, verifier);
+  };
+
+  const confirmPhoneOtp = async (confirmation: ConfirmationResult, code: string) => {
+    const result = await confirmation.confirm(code.trim());
+    await result.user.getIdToken(true);
+    setFirebaseUser(result.user);
+    await loadUserRecords(result.user);
+  };
+
+  const sendLinkPhoneOtp = async (phoneNumberE164: string, verifier: RecaptchaVerifier) => {
+    if (!auth.currentUser) throw new Error('Please sign in first.');
+    return linkWithPhoneNumber(auth.currentUser, phoneNumberE164, verifier);
+  };
+
+  const confirmLinkPhoneOtp = async (confirmation: ConfirmationResult, code: string) => {
+    const result = await confirmation.confirm(code.trim());
+    await result.user.getIdToken(true);
+    setFirebaseUser({ ...result.user } as User);
+    await loadUserRecords(result.user);
+  };
+
   const signUpWithEmail = async (params: {
     email: string;
     password: string;
@@ -563,8 +600,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signOut(auth);
   };
 
-  const needsVerification = Boolean(firebaseUser && !firebaseUser.emailVerified);
-  const needsOnboarding = Boolean(firebaseUser && firebaseUser.emailVerified && !profile);
+  const needsVerification = Boolean(firebaseUser && !isUserVerified(firebaseUser));
+  const needsOnboarding = Boolean(firebaseUser && isUserVerified(firebaseUser) && !profile);
 
   return (
     <AuthContext.Provider
@@ -596,6 +633,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enablePushNotifications,
         signInWithGoogle,
         linkGoogleAccount,
+        sendPhoneOtp,
+        confirmPhoneOtp,
+        sendLinkPhoneOtp,
+        confirmLinkPhoneOtp,
         signUpWithEmail,
         loginWithEmail,
         sendResetEmail,
