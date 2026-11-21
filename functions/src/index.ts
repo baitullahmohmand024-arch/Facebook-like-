@@ -5,8 +5,7 @@ import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/fire
 
 initializeApp();
 
-const FIRESTORE_DATABASE_ID = 'ai-studio-b0764af7-3e2c-4d3d-98b0-5f258a3bc017';
-const db = getFirestore(FIRESTORE_DATABASE_ID);
+const db = getFirestore();
 const messaging = getMessaging();
 
 type NotificationType =
@@ -168,7 +167,7 @@ async function createNotificationIfAbsent(params: {
 export const onNotificationCreated = onDocumentCreated(
   {
     document: 'notifications/{notificationId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const notif = event.data?.data() as NotificationDoc | undefined;
@@ -260,7 +259,7 @@ export const onNotificationCreated = onDocumentCreated(
 export const onMessageCreated = onDocumentCreated(
   {
     document: 'conversations/{conversationId}/messages/{messageId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const msg = event.data?.data() as
@@ -291,7 +290,7 @@ export const onMessageCreated = onDocumentCreated(
 export const onLikeCreated = onDocumentCreated(
   {
     document: 'likes/{likeId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const like = event.data?.data() as { postId: string; userId: string } | undefined;
@@ -332,7 +331,7 @@ export const onLikeCreated = onDocumentCreated(
 export const onCommentCreated = onDocumentCreated(
   {
     document: 'comments/{commentId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const comment = event.data?.data() as
@@ -392,7 +391,7 @@ export const onCommentCreated = onDocumentCreated(
 export const onFollowCreated = onDocumentCreated(
   {
     document: 'follows/{followId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const follow = event.data?.data() as { followerId: string; followingId: string } | undefined;
@@ -426,7 +425,7 @@ export const onFollowCreated = onDocumentCreated(
 export const onFriendRequestCreated = onDocumentCreated(
   {
     document: 'friendRequests/{requestId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const req = event.data?.data() as
@@ -452,7 +451,7 @@ export const onFriendRequestCreated = onDocumentCreated(
 export const onFriendRequestUpdated = onDocumentUpdated(
   {
     document: 'friendRequests/{requestId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const before = event.data?.before.data() as { status?: string } | undefined;
@@ -488,7 +487,7 @@ export const onFriendRequestUpdated = onDocumentUpdated(
 export const onPostCreated = onDocumentCreated(
   {
     document: 'posts/{postId}',
-    database: FIRESTORE_DATABASE_ID,
+    database: '(default)',
   },
   async (event) => {
     const post = event.data?.data() as

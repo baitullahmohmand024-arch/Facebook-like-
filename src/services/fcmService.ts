@@ -267,7 +267,7 @@ export async function registerFcmTokenForUser(
       return {
         ok: false,
         reason:
-          'Firebase Push registration was rejected. Verify FCM Registration API and Firebase Installations API are enabled for zesty-handler-15fd2 and VITE_FIREBASE_VAPID_KEY matches Firebase Console.',
+          'Firebase Push registration was rejected. Verify FCM Registration API and Firebase Installations API are enabled for hostelify-ddc5a and VITE_FIREBASE_VAPID_KEY matches Firebase Console.',
       };
     }
     return {
